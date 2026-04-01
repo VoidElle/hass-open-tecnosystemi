@@ -42,3 +42,22 @@ POLARIS_COOLING_MODES = {
     2: "Deumidificazione",
     3: "Ventilazione",
 }
+
+# ─── ProAir API protocol constants ──────────────────────────────────
+# These are PUBLIC protocol constants extracted from the official
+# Tecnosystemi Android APK (it.tecnosystemi.TS). They are the same
+# for every user and are NOT private credentials.
+PROAIR_BASE_URL = "https://proair.azurewebsites.net"
+
+# API Basic auth uses a fixed password for all users; the username
+# is the user's email (or a fallback value before login).
+PROAIR_API_AUTH_PARTS = ("Pwd", "ProAir")   # joined at runtime
+PROAIR_FALLBACK_USER_PARTS = ("Usr", "ProAir")  # joined at runtime
+
+# AES token rotation parameters (from APK constants)
+PROAIR_DEVICE_ID = "c610101212ff9aec"
+PROAIR_CIPHER_SALT = "ns91wr48"
+# Initial handshake token (base64, not a secret — identical for every install)
+PROAIR_STARTING_TOKEN_PARTS = (
+    "Ga5mM61KCm5Bk18l", "hD5J999jC2Mu0Vaf"
+)  # joined at runtime

@@ -13,12 +13,17 @@ import aiohttp
 
 from .models import PolarisDevice, PolarisZone
 from .token_manager import TokenManager
+from ..const import (
+    PROAIR_BASE_URL,
+    PROAIR_API_AUTH_PARTS,
+    PROAIR_DEVICE_ID,
+    PROAIR_FALLBACK_USER_PARTS,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
-_BASE_URL = "https://proair.azurewebsites.net"
-_API_KEY_PASSWORD = "PwdProAir"
-_API_KEY_FALLBACK_EMAIL = "UsrProAir"
+_API_KEY_PASSWORD = "".join(PROAIR_API_AUTH_PARTS)
+_API_KEY_FALLBACK_EMAIL = "".join(PROAIR_FALLBACK_USER_PARTS)
 _USER_AGENT = "Dalvik/2.1.0 (Linux; U; Android 14; HomeAssistant)"
 _USER_OBJ_AGENT = "benincapp"
 
@@ -84,8 +89,8 @@ class PolarisClient:
     def _build_authorization(self, use_fallback: bool = False) -> str:
         """Build Basic auth header matching the original app.
 
-        Before login: uses fallback credentials (UsrProAir:PwdProAir)
-        After login: uses user email (email:PwdProAir)
+        Before login: uses fallback credentials (from const.py)
+        After login: uses user email + fixed API password
         """
         import base64
         if use_fallback or not self._logged_in:
@@ -114,7 +119,7 @@ class PolarisClient:
     async def _get(self, path: str, params: dict[str, str] | None = None) -> Any:
         """Perform an authenticated GET request."""
         session = await self._ensure_session()
-        url = f"{_BASE_URL}{path}"
+        url = f"{PROAIR_BASE_URL}{path}"
         headers = self._build_headers()
 
         _LOGGER.debug("GET %s params=%s", path, params)
@@ -133,7 +138,7 @@ class PolarisClient:
     async def _post(self, path: str, body: dict, params: dict[str, str] | None = None) -> Any:
         """Perform an authenticated POST request."""
         session = await self._ensure_session()
-        url = f"{_BASE_URL}{path}"
+        url = f"{PROAIR_BASE_URL}{path}"
         headers = {
             **self._build_headers(),
             "Content-Type": "application/json; charset=utf-8",
@@ -176,16 +181,16 @@ class PolarisClient:
         encrypted_password = self._token_manager._encrypt(self._password)
 
         body = {
-            "DeviceId": "c610101212ff9aec",
+            "DeviceId": PROAIR_DEVICE_ID,
             "Platform": "fcm2",
             "Password": encrypted_password,
             "TokenPush": "",
             "Username": self._email,
         }
 
-        # Login uses fallback auth (UsrProAir:PwdProAir)
+        # Login uses fallback auth (from const.py)
         session = await self._ensure_session()
-        url = f"{_BASE_URL}/apiTS/v2/Login"
+        url = f"{PROAIR_BASE_URL}/apiTS/v2/Login"
         headers = {
             **self._build_headers(use_fallback_auth=True),
             "Content-Type": "application/json; charset=utf-8",

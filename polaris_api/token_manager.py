@@ -13,18 +13,23 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.padding import PKCS7
 from cryptography.hazmat.backends import default_backend
 
-_LOGGER = logging.getLogger(__name__)
+from ..const import (
+    PROAIR_CIPHER_SALT,
+    PROAIR_DEVICE_ID,
+    PROAIR_STARTING_TOKEN_PARTS,
+)
 
-# Constants matching the original app
-_CYPHER_SALT = "ns91wr48"
-_DEVICE_ID = "c610101212ff9aec"
-_STARTING_TOKEN = "Ga5mM61KCm5Bk18lhD5J999jC2Mu0Vaf"
+_LOGGER = logging.getLogger(__name__)
 
 
 class TokenManager:
     """Manages AES-encrypted token rotation for the ProAir API."""
 
-    def __init__(self, device_id: str = _DEVICE_ID, salt: str = _CYPHER_SALT) -> None:
+    def __init__(
+        self,
+        device_id: str = PROAIR_DEVICE_ID,
+        salt: str = PROAIR_CIPHER_SALT,
+    ) -> None:
         """Initialize with device ID and salt for AES key derivation."""
         # Derive AES-256 key: SHA-256(first_8_chars_of_device_id + salt)
         key_str = device_id[:8] + salt
@@ -80,7 +85,7 @@ class TokenManager:
             old_token = self._current_token or ""
             if not old_token:
                 _LOGGER.debug("No token available, returning starting token")
-                return _STARTING_TOKEN
+                return "".join(PROAIR_STARTING_TOKEN_PARTS)
 
             decrypted = self._decrypt(old_token)
             parts = decrypted.split("_")
