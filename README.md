@@ -4,13 +4,17 @@
   <small><em>(Official Tecnosystemi logo not used due to copyright restrictions)</em></small>
   <br><br>
   <h1>🏠 Hassio Open Pico</h1>
-  <p><em>Home Assistant integration for Tecnosystemi Pico devices</em></p>
+  <p><em>Home Assistant integration for Tecnosystemi Pico and Polaris 5 devices</em></p>
 </div>
 
 
-Hassio Open Pico is a Home Assistant integration that enables management of Pico devices (manufactured by Tecnosystemi) through Home Assistant.
+Hassio Open Pico is a Home Assistant integration that enables management of Tecnosystemi devices through Home Assistant.
 
-This integration provides monitoring, control, and automation capabilities for Pico devices, offering an intuitive interface for Home Assistant users.
+**Supported device families:**
+- **Pico** — Local UDP-based ventilation and air quality units
+- **Polaris 5** — Cloud-based HVAC zone controllers via ProAir REST API
+
+This integration provides monitoring, control, and automation capabilities, offering an intuitive interface for Home Assistant users.
 
 This integration took inspiration from:
 - The official [Tecnosystemi](https://play.google.com/store/apps/details?id=it.tecnosystemi.TS&hl=it) mobile application
@@ -61,15 +65,16 @@ At this point, Home Assistant will load the integration and apply the configurat
 
 ## Configuration ⚙️
 
-The integration is configured via `configuration.yaml`. Add the following to your configuration file:
-```yaml
-# Open Pico Integration
-open_pico:
+The integration is configured via `configuration.yaml`. You can configure Pico devices, Polaris 5 devices, or both.
 
+### Pico devices (local)
+
+```yaml
+open_pico:
   # Optional: Enable verbose logging (default: false)
   verbose: false
 
-  # Required: List of devices
+  # Pico devices (local UDP)
   devices:
     - ip: "192.168.8.133"
       pin: "1234"
@@ -80,23 +85,51 @@ open_pico:
       name: "Bedroom"
 ```
 
-### Configuration Options
-
-| Parameter | Required | Default | Description |
-|-----------|----------|---------|-------------|
-| `verbose` | No | `false` | Enable detailed logging for debugging |
-| `devices` | Yes | - | List of Pico devices to manage |
-
-### Device Configuration
-
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `ip` | Yes | Local IP address of the Pico device |
-| `pin` | Yes | Device PIN code (must match device configuration) |
-| `name` | Yes | Friendly name for the device |
+| `pin` | Yes | Device PIN code |
+| `name` | No | Friendly name for the device |
 
-### Multiple Devices
-Each Pico device must be listed separately in the `devices` section. The integration automatically handles concurrent communication using shared transport.
+### Polaris 5 devices (cloud)
+
+Polaris 5 devices are controlled via the Tecnosystemi ProAir cloud API. The integration logs in with your Tecnosystemi account credentials and automatically discovers all Polaris devices associated with your account.
+
+```yaml
+open_pico:
+  # Polaris 5 devices (cloud REST API)
+  polaris_devices:
+    - email: "your@email.com"
+      password: "your_password"
+      pin: "0000"
+```
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `email` | Yes | Your Tecnosystemi account email |
+| `password` | Yes | Your Tecnosystemi account password |
+| `pin` | Yes | Device PIN code (the one you enter when selecting a device in the app) |
+| `serial` | No | CU serial number. If omitted, all Polaris devices linked to your account are auto-discovered |
+| `name` | No | Friendly name (defaults to the name configured in the app) |
+
+### Mixed configuration (Pico + Polaris)
+
+You can configure both Pico and Polaris devices in the same integration:
+
+```yaml
+open_pico:
+  verbose: false
+
+  devices:
+    - ip: "192.168.8.133"
+      pin: "1234"
+      name: "Pico Living Room"
+
+  polaris_devices:
+    - email: "your@email.com"
+      password: "your_password"
+      pin: "0000"
+```
 
 **After configuration:**
 1. Save your `configuration.yaml`
@@ -104,23 +137,36 @@ Each Pico device must be listed separately in the `devices` section. The integra
 3. Restart Home Assistant
 
 ## Features ✨
+
+### Pico
 - 🌐 **Local UDP Communication**: Direct device control without cloud dependency
-- 🔄 **Multi-Device Support**: Control multiple Pico devices simultaneously
 - 📊 **Real-time Monitoring**: Temperature, humidity, CO2, TVOC sensors
 - 🎛️ **Full Control**: Operating modes, fan speed, night mode, LED control
+
+### Polaris 5
+- ☁️ **Cloud API Integration**: Control via Tecnosystemi ProAir cloud service
+- 🔍 **Auto-Discovery**: Automatic detection of all Polaris devices linked to your account
+- 🌡️ **Climate Entities**: Per-zone temperature control (10-30°C, 0.5° step)
+- ❄️ **HVAC Modes**: Heating, Cooling (Raffrescamento, Deumidificazione, Ventilazione)
+- 📊 **Zone Sensors**: Temperature, humidity, and operating mode per zone
+- 🔐 **Secure Authentication**: AES-encrypted login matching the official app protocol
+
+### General
+- 🔄 **Multi-Device Support**: Control multiple devices of both types simultaneously
 - 🏷️ **Device Organization**: Use Home Assistant areas for logical grouping
 - ⚡ **Concurrent Polling**: Efficient updates across all devices
 
 ## Limitations ⚠️
-- Support only for Pico devices
-- Local network access required (devices must be on same network as Home Assistant)
+- Pico: Local network access required (devices must be on same network as Home Assistant)
+- Polaris 5: Requires internet access (cloud-based API, same as the official Tecnosystemi app)
 - Configuration via YAML only (no UI configuration flow yet)
 
 ## Tested On 🧪
 - PICO PRO PLUS 30 **(ACD100052)**
 - PICO PRO PLUS 60 **(ACD100054)**
+- **Polaris 5** (via ProAir cloud API)
 
-*Most features should work on all Pico models*
+*Most features should work on all Pico and Polaris models*
 
 ## Contributing 🤝
 
@@ -141,6 +187,9 @@ Contributions are welcome!
 
 ## Work in progress 🚧
 - [X] Include the device sensors as entities
+- [X] Polaris 5 cloud support with auto-discovery
+- [X] Polaris climate entities (heat/cool/off per zone)
+- [X] Polaris cooling sub-modes (Raffrescamento, Deumidificazione, Ventilazione)
 - [ ] Include the possibility to show devices' errors (Waiting for maintenance flag to be triggered on my devices)
 - [ ] Include the possibility to reset the maintenance flag when maintenance is performed (Waiting for maintenance flag to be triggered on my devices)
 - [ ] UI configuration flow (alternative to YAML)

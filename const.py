@@ -32,3 +32,13 @@ TARGET_HUMIDITY_OPTIONS = {
 
 # Reverse mapping for target humidity selector options
 REVERSED_TARGET_HUMIDITY_OPTIONS = {v: k for k, v in TARGET_HUMIDITY_OPTIONS.items()}
+
+# ─── Polaris constants ───────────────────────────────────────────────
+POLARIS_SCAN_INTERVAL = 10  # seconds (cloud API, don't hammer it)
+
+POLARIS_COOLING_MODES = {
+    0: "Riscaldamento",
+    1: "Raffrescamento",
+    2: "Deumidificazione",
+    3: "Ventilazione",
+}
