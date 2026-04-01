@@ -15,15 +15,15 @@ from .models import PolarisDevice, PolarisZone
 from .token_manager import TokenManager
 from ..const import (
     PROAIR_BASE_URL,
-    PROAIR_API_AUTH_PARTS,
+    PROAIR_API_AUTH_VALUE,
     PROAIR_DEVICE_ID,
-    PROAIR_FALLBACK_USER_PARTS,
+    PROAIR_FALLBACK_USER,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
-_API_KEY_PASSWORD = "".join(PROAIR_API_AUTH_PARTS)
-_API_KEY_FALLBACK_EMAIL = "".join(PROAIR_FALLBACK_USER_PARTS)
+_API_KEY_PASSWORD = PROAIR_API_AUTH_VALUE
+_API_KEY_FALLBACK_EMAIL = PROAIR_FALLBACK_USER
 _USER_AGENT = "Dalvik/2.1.0 (Linux; U; Android 14; HomeAssistant)"
 _USER_OBJ_AGENT = "benincapp"
 

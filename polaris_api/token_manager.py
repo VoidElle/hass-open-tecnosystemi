@@ -16,7 +16,7 @@ from cryptography.hazmat.backends import default_backend
 from ..const import (
     PROAIR_CIPHER_SALT,
     PROAIR_DEVICE_ID,
-    PROAIR_STARTING_TOKEN_PARTS,
+    PROAIR_STARTING_TOKEN,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -85,7 +85,7 @@ class TokenManager:
             old_token = self._current_token or ""
             if not old_token:
                 _LOGGER.debug("No token available, returning starting token")
-                return "".join(PROAIR_STARTING_TOKEN_PARTS)
+                return PROAIR_STARTING_TOKEN
 
             decrypted = self._decrypt(old_token)
             parts = decrypted.split("_")
