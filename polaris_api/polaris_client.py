@@ -1,65 +1,92 @@
-"""REST API client for Tecnosystemi Polaris 5 (ProAir cloud service).
+"""Local UDP client for Tecnosystemi Polaris 5 (CU) devices.
 
-Ported from the original Android app and Flutter reimplementation.
-Communicates with https://proair.azurewebsites.net/api/v1/
+Uses the same UDP protocol as Pico devices (ports 40069/40070) with
+Polaris-specific commands (upd_cu, upd_zona, stato_sync).
+
+Discovered from the Tecnosystemi Android APK DEX analysis:
+- UDPSocket class: portaDest=40070, portaRead=40069
+- CmdPICO class: {cmd, frm, idp, pin} base command for ALL devices
+- JSON_OFFLINE_COMMAND constants: snake_case field names
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
-from typing import Any
+import time
+from typing import Any, Dict, Optional
 
-import aiohttp
-
+from ..open_pico_local_api.shared_transport_manager import SharedTransportManager
 from .models import PolarisDevice, PolarisZone
-from .token_manager import TokenManager
-from ..const import (
-    PROAIR_BASE_URL,
-    PROAIR_API_AUTH_VALUE,
-    PROAIR_DEVICE_ID,
-    PROAIR_FALLBACK_USER,
-)
 
 _LOGGER = logging.getLogger(__name__)
 
-_API_KEY_PASSWORD = PROAIR_API_AUTH_VALUE
-_API_KEY_FALLBACK_EMAIL = PROAIR_FALLBACK_USER
-_USER_AGENT = "Dalvik/2.1.0 (Linux; U; Android 14; HomeAssistant)"
-_USER_OBJ_AGENT = "benincapp"
 
+class PolarisLocalClient:
+    """Async local UDP client for Polaris 5 CU devices.
 
-class PolarisClient:
-    """Async client for the Polaris 5 ProAir REST API."""
+    Reuses the SharedTransportManager from PicoClient so both device
+    families share a single UDP socket on port 40069.
+    """
 
     def __init__(
         self,
-        serial: str,
+        ip: str,
         pin: str,
-        email: str | None = None,
-        password: str | None = None,
-        session: aiohttp.ClientSession | None = None,
+        device_id: str | None = None,
+        device_port: int = 40070,
+        local_port: int = 40069,
+        timeout: float = 5,
+        retry_attempts: int = 3,
+        retry_delay: float = 2.0,
+        verbose: bool = False,
     ) -> None:
-        """Initialize the Polaris client.
+        """Initialize the Polaris local client.
 
         Args:
-            serial: CU serial number (e.g. "414705189652"). Can be empty for discovery.
-            pin: CU PIN (e.g. "0000")
-            email: User email for authentication.
-            password: User password (will be AES-encrypted for login).
-            session: Optional shared aiohttp session.
+            ip: IP address of the Polaris CU device.
+            pin: Device PIN code.
+            device_id: Unique device identifier (auto-generated if omitted).
+            device_port: UDP port to send commands to (default 40070).
+            local_port: Local UDP port to listen on (default 40069).
+            timeout: Command response timeout in seconds.
+            retry_attempts: Number of retries on failure.
+            retry_delay: Delay between retries in seconds.
+            verbose: Enable verbose debug logging.
         """
-        self.serial = serial
+        self.ip = ip
         self.pin = pin
-        self._email = email or _API_KEY_FALLBACK_EMAIL
-        self._password = password
-        self._owns_session = session is None
-        self._session = session
-        self._token_manager = TokenManager()
-        self._logged_in = False
+        self.device_port = device_port
+        self.local_port = local_port
+        self.timeout = timeout
+        self.retry_attempts = retry_attempts
+        self.retry_delay = retry_delay
+        self.verbose = verbose
+
+        self.device_id = device_id or f"polaris_{ip}:{device_port}"
+
+        # Shared transport
+        self._transport_manager: SharedTransportManager | None = None
+
+        # IDP management (same mechanism as PicoClient)
+        self._idp_counter = 1
+        self._idp_range_start = 1
+        self._idp_range_size = 10000
+
+        self._response_queue: asyncio.Queue = asyncio.Queue()
+        self._lock = asyncio.Lock()
+        self._connected = False
 
         # Cached state
         self._device: PolarisDevice | None = None
         self._zones: list[PolarisZone] = []
+
+    # ─── Properties ─────────────────────────────────────────────────
+
+    @property
+    def connected(self) -> bool:
+        """Check if device is connected."""
+        return self._connected
 
     @property
     def device(self) -> PolarisDevice | None:
@@ -71,312 +98,127 @@ class PolarisClient:
         """Last known zones."""
         return self._zones
 
-    # ─── Session management ──────────────────────────────────────────
+    # ─── Connection management ──────────────────────────────────────
 
-    async def _ensure_session(self) -> aiohttp.ClientSession:
-        if self._session is None or self._session.closed:
-            self._session = aiohttp.ClientSession()
-            self._owns_session = True
-        return self._session
+    async def connect(self) -> None:
+        """Connect to the Polaris device via shared UDP transport."""
+        if self._connected:
+            return
+
+        try:
+            self._transport_manager = await SharedTransportManager.get_instance()
+
+            if not self._transport_manager.is_initialized:
+                await self._transport_manager.initialize(
+                    local_port=self.local_port,
+                    verbose=self.verbose,
+                )
+
+            self._idp_range_start, self._idp_range_size = (
+                await self._transport_manager.register_device(
+                    device_id=self.device_id,
+                    ip=self.ip,
+                    port=self.device_port,
+                    response_queue=self._response_queue,
+                    event_callbacks={},
+                )
+            )
+
+            self._idp_counter = self._idp_range_start
+            self._connected = True
+
+            if self.verbose:
+                _LOGGER.debug(
+                    "Connected Polaris '%s' to %s:%d (IDP range %d-%d)",
+                    self.device_id, self.ip, self.device_port,
+                    self._idp_range_start,
+                    self._idp_range_start + self._idp_range_size - 1,
+                )
+
+        except Exception as err:
+            raise ConnectionError(f"Failed to connect Polaris: {err}") from err
+
+    async def disconnect(self) -> None:
+        """Disconnect from the Polaris device."""
+        if not self._connected:
+            return
+
+        if self._transport_manager:
+            await self._transport_manager.unregister_device(self.device_id)
+
+        self._connected = False
+
+        if self.verbose:
+            _LOGGER.debug("Disconnected Polaris '%s'", self.device_id)
 
     async def close(self) -> None:
-        """Close the HTTP session if we own it."""
-        if self._owns_session and self._session and not self._session.closed:
-            await self._session.close()
+        """Alias for disconnect (API compat with old cloud client)."""
+        await self.disconnect()
 
-    # ─── Auth helpers ────────────────────────────────────────────────
+    async def __aenter__(self):
+        await self.connect()
+        return self
 
-    def _build_authorization(self, use_fallback: bool = False) -> str:
-        """Build Basic auth header matching the original app.
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.disconnect()
+        return False
 
-        Before login: uses fallback credentials (from const.py)
-        After login: uses user email + fixed API password
+    # ─── Public API: Read ───────────────────────────────────────────
+
+    async def get_status(self) -> dict[str, Any]:
+        """Send stato_sync and return the raw response dict.
+
+        The Polaris CU responds with a JSON object containing:
+        - CU-level fields: is_off, is_cool, cool_mod, f_inv, f_est, ...
+        - zones: list of zone objects with id_zona, name, temp, t_set, ...
         """
-        import base64
-        if use_fallback or not self._logged_in:
-            username = _API_KEY_FALLBACK_EMAIL
-        else:
-            username = self._email
-        credentials = f"{username}:{_API_KEY_PASSWORD}"
-        encoded = base64.b64encode(credentials.encode("utf-8")).decode("utf-8")
-        return f"Basic {encoded}"
+        if not self._connected:
+            raise ConnectionError("Not connected to Polaris device")
 
-    def _build_headers(self, use_fallback_auth: bool = False) -> dict[str, str]:
-        """Build request headers matching the original Android app."""
-        token = self._token_manager.retrieve_new_token()
-        return {
-            "Accept-Encoding": "gzip",
-            "Connection": "Keep-Alive",
-            "Host": "proair.azurewebsites.net",
-            "User-Agent": _USER_AGENT,
-            "UserObj-Agent": _USER_OBJ_AGENT,
-            "Token": token or "",
-            "Authorization": self._build_authorization(use_fallback=use_fallback_auth),
+        cmd = {
+            "cmd": "stato_sync",
+            "frm": "app",
+            "pin": self.pin,
         }
 
-    # ─── Low-level request helpers ───────────────────────────────────
+        response = await self._execute_command_with_retry(cmd)
+        if not response:
+            raise TimeoutError(f"Failed to get Polaris status from {self.ip}")
 
-    async def _get(self, path: str, params: dict[str, str] | None = None) -> Any:
-        """Perform an authenticated GET request."""
-        session = await self._ensure_session()
-        url = f"{PROAIR_BASE_URL}{path}"
-        headers = self._build_headers()
-
-        _LOGGER.debug("GET %s params=%s", path, params)
-
-        async with session.get(url, headers=headers, params=params) as resp:
-            data = await resp.json(content_type=None)
-
-            if resp.status == 200:
-                # Store token from response if available
-                self._update_token_from_response(resp, data)
-                return data
-
-            _LOGGER.error("GET %s failed: %d %s", path, resp.status, data)
-            raise PolarisApiError(f"GET {path} returned {resp.status}: {data}")
-
-    async def _post(self, path: str, body: dict, params: dict[str, str] | None = None) -> Any:
-        """Perform an authenticated POST request."""
-        session = await self._ensure_session()
-        url = f"{PROAIR_BASE_URL}{path}"
-        headers = {
-            **self._build_headers(),
-            "Content-Type": "application/json; charset=utf-8",
-        }
-
-        _LOGGER.debug("POST %s body=%s", path, body)
-
-        async with session.post(url, headers=headers, json=body, params=params) as resp:
-            data = await resp.json(content_type=None)
-
-            if resp.status == 200:
-                self._update_token_from_response(resp, data)
-                return data
-
-            _LOGGER.error("POST %s failed: %d %s", path, resp.status, data)
-            raise PolarisApiError(f"POST {path} returned {resp.status}: {data}")
-
-    def _update_token_from_response(self, resp: aiohttp.ClientResponse, data: Any) -> None:
-        """Extract and store token from successful response."""
-        # Token comes from the response body or stays rotated
-        if isinstance(data, dict) and "Token" in data:
-            self._token_manager.current_token = data["Token"]
-
-    # ─── Public API: Login ──────────────────────────────────────────
-
-    async def login(self) -> bool:
-        """Authenticate with the ProAir cloud using email + password.
-
-        The login endpoint is /apiTS/v2/Login. The password is sent
-        AES-encrypted in the request body. On success, the server returns
-        a session Token that is used for all subsequent API calls.
-
-        Returns True on success, False on failure.
-        """
-        if not self._password:
-            _LOGGER.warning("No password provided, skipping login")
-            return False
-
-        # Encrypt the password using the same AES as token rotation
-        encrypted_password = self._token_manager._encrypt(self._password)
-
-        body = {
-            "DeviceId": PROAIR_DEVICE_ID,
-            "Platform": "fcm2",
-            "Password": encrypted_password,
-            "TokenPush": "",
-            "Username": self._email,
-        }
-
-        # Login uses fallback auth (from const.py)
-        session = await self._ensure_session()
-        url = f"{PROAIR_BASE_URL}/apiTS/v2/Login"
-        headers = {
-            **self._build_headers(use_fallback_auth=True),
-            "Content-Type": "application/json; charset=utf-8",
-        }
-
-        _LOGGER.debug("Logging in as %s", self._email)
-
-        async with session.post(url, headers=headers, json=body) as resp:
-            data = await resp.json(content_type=None)
-
-            if resp.status == 200 and isinstance(data, dict):
-                res_code = data.get("ResCode", -1)
-                if res_code == 0 or data.get("Token"):
-                    # Store the session token
-                    token = data.get("Token", "")
-                    if token:
-                        self._token_manager.current_token = token
-                    self._logged_in = True
-                    _LOGGER.info("Login successful for %s (user_id=%s)", self._email, data.get("ID"))
-                    return True
-                else:
-                    _LOGGER.error("Login failed: ResCode=%s, response=%s", res_code, data)
-                    return False
-
-            _LOGGER.error("Login request failed: %d %s", resp.status, data)
-            return False
-
-    # ─── Public API: Discovery ──────────────────────────────────────
-
-    async def get_plants(self) -> list[dict]:
-        """Fetch all plants/devices for the authenticated user.
-
-        Calls /api/v1/GetPlants (no serial needed, uses email from auth).
-        Returns a list of device dicts, each with 'Serial', 'Name',
-        'LVDV_Type' (1=PICO, other=Polaris), 'FWVer', etc.
-        """
-        data = await self._get("/api/v1/GetPlants")
-
-        # GetPlants returns ResCode/ResDescr wrapper
-        devices: list[dict] = []
-        if isinstance(data, dict):
-            res_descr = data.get("ResDescr", "")
-            if isinstance(res_descr, str):
-                plants = json.loads(res_descr)
-            elif isinstance(res_descr, list):
-                plants = res_descr
-            else:
-                plants = []
-
-            if isinstance(plants, list):
-                for plant in plants:
-                    if isinstance(plant, dict):
-                        plant_devices = plant.get("ListDevices", [])
-                        if isinstance(plant_devices, list):
-                            devices.extend(plant_devices)
-        elif isinstance(data, list):
-            for plant in data:
-                if isinstance(plant, dict):
-                    plant_devices = plant.get("ListDevices", [])
-                    if isinstance(plant_devices, list):
-                        devices.extend(plant_devices)
-
-        _LOGGER.debug("GetPlants returned %d devices", len(devices))
-        return devices
-
-    @classmethod
-    async def discover_polaris_devices(
-        cls,
-        email: str,
-        password: str,
-        pin: str | None = None,
-    ) -> list[dict]:
-        """Discover all Polaris (non-PICO) devices for an email.
-
-        Performs login with email+password, then calls GetPlants to
-        discover all devices associated with the account.
-
-        Args:
-            email: User email for authentication.
-            password: User password.
-            pin: Optional PIN (not needed for discovery, only for control).
-
-        Returns:
-            List of device dicts with keys: Serial, Name, LVDV_Type, FWVer, etc.
-            Only returns non-PICO devices (LVDV_Type != 1).
-        """
-        # Create a temporary client for login + discovery
-        client = cls(serial="", pin=pin or "0000", email=email, password=password)
-        try:
-            # Step 1: Login
-            logged_in = await client.login()
-            if not logged_in:
-                raise PolarisApiError(f"Login failed for {email}")
-
-            # Step 2: Get all plants/devices
-            all_devices = await client.get_plants()
-
-            # Filter: LVDV_Type 1 = PICO, everything else = Polaris/ProAir
-            polaris = [d for d in all_devices if d.get("LVDV_Type") != 1]
-            _LOGGER.info(
-                "Discovered %d Polaris devices (out of %d total) for %s",
-                len(polaris), len(all_devices), email,
-            )
-            return polaris
-        finally:
-            await client.close()
-
-    # ─── Public API: Read operations ─────────────────────────────────
-
-    async def get_home(self) -> PolarisDevice:
-        """Fetch device info from GetHome endpoint.
-
-        Returns basic CU info: name, serial, firmware, on/off, cooling mode, etc.
-        """
-        params = {"cuSerial": self.serial, "PIN": self.pin}
-        data = await self._get("/api/v1/GetHome", params=params)
-
-        # GetHome returns a JSON array with one element
-        if isinstance(data, list) and data:
-            cu_data = data[0]
-        elif isinstance(data, dict):
-            if "ResCode" in data and "ResDescr" in data:
-                res_descr = data["ResDescr"]
-                if isinstance(res_descr, str):
-                    parsed = json.loads(res_descr)
-                    cu_data = parsed[0] if isinstance(parsed, list) else parsed
-                else:
-                    cu_data = res_descr
-            else:
-                cu_data = data
-        else:
-            raise PolarisApiError(f"Unexpected GetHome response: {data}")
-
-        self._device = PolarisDevice.from_get_home(cu_data)
-        return self._device
-
-    async def get_cu_state(self) -> list[PolarisZone]:
-        """Fetch zone data from GetCUState endpoint.
-
-        Returns detailed zone info: temperature, setpoint, on/off, modes, etc.
-        """
-        params = {"cuSerial": self.serial, "PIN": self.pin}
-        data = await self._get("/api/v1/GetCUState", params=params)
-
-        # GetCUState may return:
-        # 1. Direct JSON object with "Zones" array
-        # 2. ResCode/ResDescr wrapper
-        # 3. JSON array
-        cu_data = None
-        if isinstance(data, dict):
-            if "ResCode" in data and "ResDescr" in data:
-                res_descr = data["ResDescr"]
-                if isinstance(res_descr, str):
-                    decoded = json.loads(res_descr)
-                    cu_data = decoded[0] if isinstance(decoded, list) else decoded
-                elif isinstance(res_descr, dict):
-                    cu_data = res_descr
-            else:
-                cu_data = data
-        elif isinstance(data, list) and data:
-            cu_data = data[0]
-
-        if not cu_data or "Zones" not in cu_data:
-            _LOGGER.warning("No Zones in GetCUState response: %s", cu_data)
-            self._zones = []
-            return self._zones
-
-        zones_data = cu_data["Zones"]
-        self._zones = [PolarisZone.from_api(z) for z in zones_data if isinstance(z, dict)]
-
-        _LOGGER.debug("Parsed %d zones from GetCUState", len(self._zones))
-        return self._zones
+        return response
 
     async def async_update(self) -> tuple[PolarisDevice, list[PolarisZone]]:
-        """Full refresh: fetch both device info and zone data.
+        """Full refresh: fetch status and parse device + zones.
 
-        Automatically performs login on first call if password is available.
+        Returns (PolarisDevice, list[PolarisZone]).
         """
-        if not self._logged_in and self._password:
-            await self.login()
+        raw = await self.get_status()
 
-        device = await self.get_home()
-        zones = await self.get_cu_state()
-        return device, zones
+        # Parse device-level data
+        self._device = PolarisDevice.from_local(raw)
 
-    # ─── Public API: Write operations (zone) ─────────────────────────
+        # Parse zones
+        zones_data = raw.get("zones", raw.get("Zones", []))
+        if isinstance(zones_data, list):
+            self._zones = [
+                PolarisZone.from_local(z)
+                for z in zones_data
+                if isinstance(z, dict)
+            ]
+        else:
+            self._zones = []
+
+        _LOGGER.debug(
+            "[%s] Polaris update: on=%s, mode=%s, zones=%d",
+            self.device_id,
+            self._device.is_on,
+            self._device.cooling_mode_name,
+            len(self._zones),
+        )
+
+        return self._device, self._zones
+
+    # ─── Public API: Write (zone) ───────────────────────────────────
 
     async def update_zone(
         self,
@@ -388,25 +230,20 @@ class PolarisClient:
         fancoil_set: int | None = None,
         serranda_set: int | None = None,
     ) -> None:
-        """Update a zone's settings.
+        """Update a zone's settings via local UDP.
 
-        Sends to /api/v1/UpdateZonaData using the command format expected
-        by the C# backend: snake_case keys, ints for booleans.
-
-        Args:
-            zone: The zone to update
-            is_off: Turn zone on (False) or off (True)
-            set_temp: Target temperature in °C (will be multiplied by 10)
-            is_crono: Enable chrono mode
-            fancoil_set: Fancoil speed setting
-            serranda_set: Shutter/damper setting
+        Uses the upd_zona command format from the APK DEX:
+        {"c":"upd_zona", "id_zona":..., "name":..., "is_off":...,
+         "t_set":..., "is_crono":..., "fan_set":..., "shu_set":..., "pin":...}
         """
+        if not self._connected:
+            raise ConnectionError("Not connected to Polaris device")
+
         effective_is_off = is_off if is_off is not None else zone.is_off
         effective_temp = set_temp if set_temp is not None else (zone.set_temp or 20.0)
         effective_crono = is_crono if is_crono is not None else zone.is_crono_mode
         set_temp_int = round(effective_temp * 10)
 
-        # Build command JSON (snake_case format matching original Android app)
         cmd_data: dict[str, Any] = {
             "c": "upd_zona",
             "id_zona": zone.zone_id,
@@ -414,6 +251,7 @@ class PolarisClient:
             "is_off": 1 if effective_is_off else 0,
             "t_set": str(set_temp_int),
             "is_crono": 1 if effective_crono else 0,
+            "pin": self.pin,
         }
 
         # Add fan_set / shu_set if available
@@ -429,22 +267,24 @@ class PolarisClient:
             cmd_data["shu_set"] = shu_val
             cmd_data["fan_set"] = shu_val
 
-        cmd_data["pin"] = self.pin
-
-        body = {
-            "Cmd": json.dumps(cmd_data),
-            "Name": self._device.name if self._device else "",
-            "Pin": self.pin,
-            "Serial": self.serial,
-            "ZoneId": zone.zone_id,
+        # Wrap in standard command envelope
+        cmd = {
+            "cmd": "upd_zona",
+            "frm": "app",
+            "pin": self.pin,
+            **cmd_data,
         }
 
-        params = {"cuSerial": self.serial, "PIN": self.pin}
-        await self._post("/api/v1/UpdateZonaData", body=body, params=params)
+        result = await self._execute_command_with_retry(cmd)
+        if result is None:
+            _LOGGER.warning("No response for upd_zona (zone %d)", zone.zone_id)
 
-        _LOGGER.info("Zone '%s' updated: is_off=%s, temp=%.1f°C", zone.name, effective_is_off, effective_temp)
+        _LOGGER.info(
+            "Zone '%s' updated: is_off=%s, temp=%.1f°C",
+            zone.name, effective_is_off, effective_temp,
+        )
 
-    # ─── Public API: Write operations (CU / device) ──────────────────
+    # ─── Public API: Write (CU / device) ────────────────────────────
 
     async def update_cu(
         self,
@@ -453,16 +293,15 @@ class PolarisClient:
         is_cooling: bool | None = None,
         operating_mode: int | None = None,
     ) -> None:
-        """Update CU (device-level) settings.
+        """Update CU (device-level) settings via local UDP.
 
-        Sends to /api/v1/UpdateCUData using the command format expected
-        by the C# backend.
-
-        Args:
-            is_off: Turn device on (False) or off (True)
-            is_cooling: Enable cooling mode
-            operating_mode: 0=heating, 1=raffrescamento, 2=deumidificazione, 3=ventilazione
+        Uses the upd_cu command format from the APK DEX:
+        {"c":"upd_cu", "pin":..., "is_off":..., "is_cool":...,
+         "cool_mod":..., "t_can":..., "f_inv":..., "f_est":...}
         """
+        if not self._connected:
+            raise ConnectionError("Not connected to Polaris device")
+
         dev = self._device
         eff_is_off = is_off if is_off is not None else (dev.is_off if dev else False)
         eff_is_cooling = is_cooling if is_cooling is not None else (dev.is_cooling if dev else False)
@@ -479,22 +318,24 @@ class PolarisClient:
             "f_est": dev.f_est if dev else 0,
         }
 
-        body = {
-            "Cmd": json.dumps(cmd_data),
-            "Name": dev.name if dev else "",
-            "Pin": self.pin,
-            "Serial": self.serial,
+        cmd = {
+            "cmd": "upd_cu",
+            "frm": "app",
+            "pin": self.pin,
+            **cmd_data,
         }
 
-        params = {"cuSerial": self.serial, "PIN": self.pin}
-        await self._post("/api/v1/UpdateCUData", body=body, params=params)
+        result = await self._execute_command_with_retry(cmd)
+        if result is None:
+            _LOGGER.warning("No response for upd_cu")
 
         _LOGGER.info(
             "CU '%s' updated: is_off=%s, cooling=%s, mode=%d",
-            dev.name if dev else self.serial, eff_is_off, eff_is_cooling, eff_op_mode,
+            dev.name if dev else self.ip,
+            eff_is_off, eff_is_cooling, eff_op_mode,
         )
 
-    # Convenience methods
+    # ─── Convenience methods ────────────────────────────────────────
 
     async def turn_on(self) -> None:
         """Turn the device on."""
@@ -524,6 +365,131 @@ class PolarisClient:
         """Turn a zone off."""
         await self.update_zone(zone, is_off=True)
 
+    # ─── IDP management (same pattern as PicoClient) ────────────────
+
+    async def _get_next_idp(self) -> int:
+        """Get next IDP within allocated range."""
+        async with self._lock:
+            idp = self._idp_counter
+            self._idp_counter += 1
+            if self._idp_counter >= (self._idp_range_start + self._idp_range_size):
+                self._idp_counter = self._idp_range_start
+            return idp
+
+    async def _reset_idp_counter(self) -> None:
+        """Reset IDP counter to start of allocated range."""
+        async with self._lock:
+            self._idp_counter = self._idp_range_start
+
+    # ─── UDP send/receive (same pattern as PicoClient) ──────────────
+
+    async def _send_udp_packet(self, cmd: dict[str, Any]) -> bool:
+        """Send a raw UDP packet to the device."""
+        try:
+            data = json.dumps(cmd).encode("utf-8")
+            await self._transport_manager.send_to_device(self.device_id, data)
+
+            if self.verbose:
+                cmd_name = cmd.get("cmd", cmd.get("c", "unknown"))
+                _LOGGER.debug(
+                    "-> [%s] SENT: %s (idp:%s)",
+                    self.device_id, cmd_name, cmd.get("idp"),
+                )
+            return True
+
+        except Exception as err:
+            if self.verbose:
+                _LOGGER.debug("[%s] Send error: %s", self.device_id, err)
+            raise
+
+    async def _execute_command_with_retry(
+        self,
+        cmd_dict: dict[str, Any],
+        retry: bool = True,
+    ) -> dict[str, Any] | None:
+        """Execute a command with IDP sync retry logic."""
+        max_attempts = self.retry_attempts if retry else 1
+        max_idp_sync = 5
+
+        for attempt in range(1, max_attempts + 1):
+            if attempt > 1:
+                if self.verbose:
+                    _LOGGER.debug("[%s] Retry %d/%d", self.device_id, attempt, max_attempts)
+                await asyncio.sleep(self.retry_delay)
+
+            for idp_sync_attempt in range(max_idp_sync):
+                idp = await self._get_next_idp()
+                cmd = {**cmd_dict, "idp": idp}
+
+                if not await self._send_udp_packet(cmd):
+                    continue
+
+                response = await self._wait_for_response(idp, timeout=2.0)
+
+                if response:
+                    if idp_sync_attempt > 0 and self.verbose:
+                        _LOGGER.debug(
+                            "[%s] IDP synchronized after %d increments",
+                            self.device_id, idp_sync_attempt,
+                        )
+                    return response
+
+                if self.verbose:
+                    _LOGGER.debug(
+                        "[%s] No response for IDP %d — likely out of sync",
+                        self.device_id, idp,
+                    )
+
+            # After all IDP sync attempts, reset
+            if attempt < max_attempts:
+                await self._reset_idp_counter()
+
+        return None
+
+    async def _wait_for_response(
+        self, idp: int, timeout: float
+    ) -> dict[str, Any] | None:
+        """Wait for response matching the given IDP."""
+        got_ack = False
+        end_time = time.time() + timeout
+        ack_timeout = 2.0
+        ack_received_time = None
+
+        while time.time() < end_time:
+            remaining = end_time - time.time()
+            if remaining <= 0:
+                break
+
+            if got_ack and ack_received_time:
+                if time.time() - ack_received_time > ack_timeout:
+                    return None
+
+            try:
+                response, addr = await asyncio.wait_for(
+                    self._response_queue.get(),
+                    timeout=min(remaining, 0.5),
+                )
+
+                if response.get("idp") != idp:
+                    continue
+
+                # ACK from device
+                if response.get("res") == 99 and response.get("frm") == "mst":
+                    got_ack = True
+                    ack_received_time = time.time()
+
+                # Data response
+                elif response.get("res") != 99:
+                    # Send ACK back
+                    ack = {"idp": idp, "frm": "app", "res": 99}
+                    await self._send_udp_packet(ack)
+                    return response
+
+            except asyncio.TimeoutError:
+                continue
+
+        return None
+
 
 class PolarisApiError(Exception):
-    """Error communicating with the Polaris API."""
+    """Error communicating with the Polaris device."""

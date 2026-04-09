@@ -1,8 +1,8 @@
 """Open Pico integration for Home Assistant.
 
-Supports two device families:
-  - Pico: Local UDP-based ventilation/air quality units
-  - Polaris 5: Cloud-based HVAC zone controllers via ProAir REST API
+Supports two device families, both using local UDP communication:
+  - Pico: Ventilation/air quality units (ports 40069/40070)
+  - Polaris 5: HVAC zone controllers (same ports, same protocol structure)
 """
 from __future__ import annotations
 
@@ -44,13 +44,10 @@ PICO_DEVICE_SCHEMA = vol.Schema({
     vol.Optional("name"): cv.string,
 })
 
-# Define the Polaris device schema (cloud REST)
-# Login with email+password, auto-discovers serial via GetPlants
+# Define the Polaris device schema (local UDP — same ports as Pico)
 POLARIS_DEVICE_SCHEMA = vol.Schema({
-    vol.Required("email"): cv.string,
-    vol.Required("password"): cv.string,
+    vol.Required("ip"): cv.string,
     vol.Required("pin"): cv.string,
-    vol.Optional("serial"): cv.string,  # Optional: auto-discovered if omitted
     vol.Optional("name"): cv.string,
 })
 
@@ -101,9 +98,11 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         if successful_pico > 0:
             platforms_needed.update(PICO_PLATFORMS)
 
-    # ─── Set up Polaris devices (cloud REST) ──────────────────────────
+    # ─── Set up Polaris devices (local UDP) ───────────────────────────
     if polaris_devices:
-        successful_polaris = await _setup_polaris_devices(hass, polaris_devices)
+        successful_polaris = await _setup_polaris_devices(
+            hass, polaris_devices, local_port, verbose
+        )
         if successful_polaris > 0:
             platforms_needed.update(POLARIS_PLATFORMS)
 
@@ -196,115 +195,102 @@ async def _setup_pico_devices(
     return successful
 
 
-async def _setup_polaris_devices(hass: HomeAssistant, devices: list[dict]) -> int:
-    """Set up Polaris devices with cloud REST API. Returns count of successful devices.
+async def _setup_polaris_devices(
+    hass: HomeAssistant,
+    devices: list[dict],
+    local_port: int,
+    verbose: bool,
+) -> int:
+    """Set up Polaris devices with local UDP transport.
 
-    Each entry in 'devices' requires 'email' and 'pin'.
-    If 'serial' is omitted, we auto-discover all Polaris devices for that email
-    using the GetPlants endpoint and set up each one.
+    Each entry requires 'ip' and 'pin' (same as Pico devices).
+    The Polaris CU communicates on the same UDP ports (40069/40070).
     """
-    from .polaris_api.polaris_client import PolarisClient
+    from .polaris_api.polaris_client import PolarisLocalClient
     from .polaris_coordinator import PolarisCoordinator
 
     successful = 0
 
     for idx, device_config in enumerate(devices):
-        email = device_config.get("email")
-        password = device_config.get("password")
+        polaris_ip = device_config.get("ip")
         pin = device_config.get("pin")
-        serial = device_config.get("serial")
-        config_name = device_config.get("name")
+        device_name = device_config.get("name", f"Polaris Device {idx + 1}")
 
-        if serial:
-            # Serial explicitly provided — set up directly
-            serials_to_setup = [{"serial": serial, "name": config_name}]
-        else:
-            # Auto-discover devices for this email via login + GetPlants
-            _LOGGER.info("Discovering Polaris devices for email: %s", email)
-            try:
-                async with asyncio.timeout(30):
-                    discovered = await PolarisClient.discover_polaris_devices(
-                        email, password, pin
-                    )
-            except asyncio.TimeoutError:
-                _LOGGER.error("Timeout discovering Polaris devices for %s", email)
-                continue
-            except Exception as err:
-                _LOGGER.error("Failed to discover Polaris devices for %s: %s", email, err)
-                continue
+        _LOGGER.debug("Setting up Polaris device '%s': ip=%s", device_name, polaris_ip)
 
-            if not discovered:
-                _LOGGER.warning("No Polaris devices found for email %s", email)
-                continue
+        try:
+            device_id = f"polaris_{polaris_ip.replace('.', '_')}"
 
-            serials_to_setup = [
-                {
-                    "serial": d.get("Serial", ""),
-                    "name": config_name or d.get("Name"),
-                }
-                for d in discovered
-                if d.get("Serial")
-            ]
-
-            _LOGGER.info(
-                "Discovered %d Polaris device(s) for %s: %s",
-                len(serials_to_setup), email,
-                [s["serial"] for s in serials_to_setup],
+            client = PolarisLocalClient(
+                ip=polaris_ip,
+                pin=pin,
+                device_id=device_id,
+                device_port=40070,
+                local_port=local_port,
+                timeout=15,
+                retry_attempts=3,
+                retry_delay=2.0,
+                verbose=verbose,
             )
 
-        # Set up each device
-        for dev_info in serials_to_setup:
-            dev_serial = dev_info["serial"]
-            device_name = dev_info.get("name") or f"Polaris {dev_serial[-4:]}"
+            await client.connect()
 
-            _LOGGER.debug("Setting up Polaris device '%s': serial=%s", device_name, dev_serial)
-
+            # Initial fetch to verify connectivity
             try:
-                client = PolarisClient(
-                    serial=dev_serial, pin=pin, email=email, password=password
+                async with asyncio.timeout(30):
+                    device, zones = await client.async_update()
+            except asyncio.TimeoutError:
+                _LOGGER.error(
+                    "Timeout connecting to Polaris '%s' (%s)",
+                    device_name, polaris_ip,
                 )
-
-                # Initial fetch to verify connectivity
-                try:
-                    async with asyncio.timeout(30):
-                        device, zones = await client.async_update()
-                except asyncio.TimeoutError:
-                    _LOGGER.error("Timeout connecting to Polaris '%s' (serial=%s)", device_name, dev_serial)
-                    await client.close()
-                    continue
-                except Exception as err:
-                    _LOGGER.error("Failed initial fetch for Polaris '%s' (serial=%s): %s", device_name, dev_serial, err)
-                    await client.close()
-                    continue
-
-                # Use the name from the API if not explicitly set
-                if device.name and dev_info.get("name") is None:
-                    device_name = device.name
-
-                coordinator = PolarisCoordinator(hass, client, device_name)
-
-                # Initial refresh through the coordinator
-                try:
-                    async with asyncio.timeout(30):
-                        await coordinator.async_refresh()
-                        if not coordinator.last_update_success:
-                            raise Exception(f"Coordinator refresh failed: {coordinator.last_exception}")
-                except Exception as err:
-                    _LOGGER.error("Coordinator refresh failed for Polaris '%s': %s", device_name, err)
-                    await client.close()
-                    continue
-
-                hass.data[DOMAIN]["polaris_coordinators"].append(coordinator)
-                successful += 1
-
-                _LOGGER.info(
-                    "Polaris '%s' (serial=%s): on=%s, mode=%s, zones=%d",
-                    device_name, dev_serial, device.is_on, device.cooling_mode_name, len(zones),
-                )
-
-            except Exception as err:
-                _LOGGER.error("Error setting up Polaris '%s': %s", device_name, err, exc_info=True)
+                await client.disconnect()
                 continue
+            except Exception as err:
+                _LOGGER.error(
+                    "Failed initial fetch for Polaris '%s' (%s): %s",
+                    device_name, polaris_ip, err,
+                )
+                await client.disconnect()
+                continue
+
+            # Use the name from the device if not explicitly set in config
+            if device.name and device.name != "Unknown" and "name" not in device_config:
+                device_name = device.name
+
+            coordinator = PolarisCoordinator(hass, client, device_name)
+
+            # Initial refresh through the coordinator
+            try:
+                async with asyncio.timeout(30):
+                    await coordinator.async_refresh()
+                    if not coordinator.last_update_success:
+                        raise Exception(
+                            f"Coordinator refresh failed: {coordinator.last_exception}"
+                        )
+            except Exception as err:
+                _LOGGER.error(
+                    "Coordinator refresh failed for Polaris '%s': %s",
+                    device_name, err,
+                )
+                await client.disconnect()
+                continue
+
+            hass.data[DOMAIN]["polaris_coordinators"].append(coordinator)
+            successful += 1
+
+            _LOGGER.info(
+                "Polaris '%s' (%s): on=%s, mode=%s, zones=%d",
+                device_name, polaris_ip,
+                device.is_on, device.cooling_mode_name, len(zones),
+            )
+
+        except Exception as err:
+            _LOGGER.error(
+                "Error setting up Polaris '%s': %s",
+                device_name, err, exc_info=True,
+            )
+            continue
 
     return successful
 

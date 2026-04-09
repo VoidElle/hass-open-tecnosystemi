@@ -12,9 +12,9 @@ Hassio Open Pico is a Home Assistant integration that enables management of Tecn
 
 **Supported device families:**
 - **Pico** — Local UDP-based ventilation and air quality units
-- **Polaris 5** — Cloud-based HVAC zone controllers via ProAir REST API
+- **Polaris 5** — Local UDP-based HVAC zone controllers
 
-This integration provides monitoring, control, and automation capabilities, offering an intuitive interface for Home Assistant users.
+Both device families communicate over the **same local UDP protocol** (ports 40069/40070), requiring no cloud connectivity.
 
 This integration took inspiration from:
 - The official [Tecnosystemi](https://play.google.com/store/apps/details?id=it.tecnosystemi.TS&hl=it) mobile application
@@ -54,7 +54,7 @@ After installing the integration (via HACS or manually) **and restarting Home As
 
 1. Go to **Settings → Devices & Services**
 2. Click **➕ Add Integration**
-3. Search for **“Hassio Open Pico”**
+3. Search for **"Hassio Open Pico"**
 4. Select it from the list
 5. Go to the **configuration** step below
 
@@ -91,26 +91,26 @@ open_pico:
 | `pin` | Yes | Device PIN code |
 | `name` | No | Friendly name for the device |
 
-### Polaris 5 devices (cloud)
+### Polaris 5 devices (local)
 
-Polaris 5 devices are controlled via the Tecnosystemi ProAir cloud API. The integration logs in with your Tecnosystemi account credentials and automatically discovers all Polaris devices associated with your account.
+Polaris 5 devices communicate via the same local UDP protocol as Pico devices. You need the device's local IP address and PIN code.
+
+> **How to find the IP and PIN:** Connect to the Polaris device's WiFi access point (SSID starts with `POLARIS_`), or find its IP in your router's DHCP table. The PIN is the same one you use in the official Tecnosystemi app when selecting a device.
 
 ```yaml
 open_pico:
-  # Polaris 5 devices (cloud REST API)
+  # Polaris 5 devices (local UDP)
   polaris_devices:
-    - email: "your@email.com"
-      password: "your_password"
+    - ip: "192.168.8.200"
       pin: "0000"
+      name: "Polaris Living Room"
 ```
 
 | Parameter | Required | Description |
 |-----------|----------|-------------|
-| `email` | Yes | Your Tecnosystemi account email |
-| `password` | Yes | Your Tecnosystemi account password |
+| `ip` | Yes | Local IP address of the Polaris CU device |
 | `pin` | Yes | Device PIN code (the one you enter when selecting a device in the app) |
-| `serial` | No | CU serial number. If omitted, all Polaris devices linked to your account are auto-discovered |
-| `name` | No | Friendly name (defaults to the name configured in the app) |
+| `name` | No | Friendly name (defaults to the name configured in the device) |
 
 ### Mixed configuration (Pico + Polaris)
 
@@ -126,9 +126,9 @@ open_pico:
       name: "Pico Living Room"
 
   polaris_devices:
-    - email: "your@email.com"
-      password: "your_password"
+    - ip: "192.168.8.200"
       pin: "0000"
+      name: "Polaris Living Room"
 ```
 
 **After configuration:**
@@ -144,27 +144,25 @@ open_pico:
 - 🎛️ **Full Control**: Operating modes, fan speed, night mode, LED control
 
 ### Polaris 5
-- ☁️ **Cloud API Integration**: Control via Tecnosystemi ProAir cloud service
-- 🔍 **Auto-Discovery**: Automatic detection of all Polaris devices linked to your account
+- 🌐 **Local UDP Communication**: Direct device control, no cloud or internet required
 - 🌡️ **Climate Entities**: Per-zone temperature control (10-30°C, 0.5° step)
 - ❄️ **HVAC Modes**: Heating, Cooling (Raffrescamento, Deumidificazione, Ventilazione)
 - 📊 **Zone Sensors**: Temperature, humidity, and operating mode per zone
-- 🔐 **Secure Authentication**: AES-encrypted login matching the official app protocol
 
 ### General
 - 🔄 **Multi-Device Support**: Control multiple devices of both types simultaneously
 - 🏷️ **Device Organization**: Use Home Assistant areas for logical grouping
 - ⚡ **Concurrent Polling**: Efficient updates across all devices
+- 🔌 **Shared UDP Transport**: All devices share a single UDP socket, no port conflicts
 
 ## Limitations ⚠️
-- Pico: Local network access required (devices must be on same network as Home Assistant)
-- Polaris 5: Requires internet access (cloud-based API, same as the official Tecnosystemi app)
+- Both Pico and Polaris require local network access (devices must be on same network as Home Assistant)
 - Configuration via YAML only (no UI configuration flow yet)
 
 ## Tested On 🧪
 - PICO PRO PLUS 30 **(ACD100052)**
 - PICO PRO PLUS 60 **(ACD100054)**
-- **Polaris 5** (via ProAir cloud API)
+- **Polaris 5** (via local UDP)
 
 *Most features should work on all Pico and Polaris models*
 
@@ -187,9 +185,10 @@ Contributions are welcome!
 
 ## Work in progress 🚧
 - [X] Include the device sensors as entities
-- [X] Polaris 5 cloud support with auto-discovery
+- [X] Polaris 5 local UDP support
 - [X] Polaris climate entities (heat/cool/off per zone)
 - [X] Polaris cooling sub-modes (Raffrescamento, Deumidificazione, Ventilazione)
+- [ ] Polaris auto-discovery via network scan
 - [ ] Include the possibility to show devices' errors (Waiting for maintenance flag to be triggered on my devices)
 - [ ] Include the possibility to reset the maintenance flag when maintenance is performed (Waiting for maintenance flag to be triggered on my devices)
 - [ ] UI configuration flow (alternative to YAML)

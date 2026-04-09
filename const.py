@@ -34,7 +34,7 @@ TARGET_HUMIDITY_OPTIONS = {
 REVERSED_TARGET_HUMIDITY_OPTIONS = {v: k for k, v in TARGET_HUMIDITY_OPTIONS.items()}
 
 # ─── Polaris constants ───────────────────────────────────────────────
-POLARIS_SCAN_INTERVAL = 10  # seconds (cloud API, don't hammer it)
+POLARIS_SCAN_INTERVAL = 5  # seconds (local UDP, can poll faster)
 
 POLARIS_COOLING_MODES = {
     0: "Riscaldamento",
@@ -42,22 +42,3 @@ POLARIS_COOLING_MODES = {
     2: "Deumidificazione",
     3: "Ventilazione",
 }
-
-# ─── ProAir API protocol constants ──────────────────────────────────
-# These are PUBLIC protocol constants extracted from the official
-# Tecnosystemi Android APK (it.tecnosystemi.TS). They are identical
-# for every user/install and are NOT private credentials.
-# Encoded to avoid false positives from secret scanners.
-import base64 as _b64
-
-PROAIR_BASE_URL = "https://proair.azurewebsites.net"
-
-def _d(s: str) -> str:
-    """Decode a base64-encoded protocol constant."""
-    return _b64.b64decode(s).decode("utf-8")
-
-PROAIR_API_AUTH_VALUE = _d("UHdkUHJvQWly")
-PROAIR_FALLBACK_USER = _d("VXNyUHJvQWly")
-PROAIR_DEVICE_ID = _d("YzYxMDEwMTIxMmZmOWFlYw==")
-PROAIR_CIPHER_SALT = _d("bnM5MXdyNDg=")
-PROAIR_STARTING_TOKEN = _d("R2E1bU02MUtDbTVCazE4bGhENUo5OTlqQzJNdTBWYWY=")

@@ -1,4 +1,4 @@
-"""DataUpdateCoordinator for Polaris 5 devices."""
+"""DataUpdateCoordinator for Polaris 5 devices (local UDP)."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,15 +8,15 @@ import logging
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .polaris_api.polaris_client import PolarisClient, PolarisApiError
+from .polaris_api.polaris_client import PolarisLocalClient, PolarisApiError
 from .polaris_api.models import PolarisDevice, PolarisZone
 
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-# Polaris polls every 10s (cloud API, don't hammer it)
-POLARIS_SCAN_INTERVAL = 10
+# Local UDP polling — can be faster than cloud since no API billing concerns
+POLARIS_SCAN_INTERVAL = 5
 
 
 @dataclass
@@ -28,18 +28,18 @@ class PolarisData:
 
 
 class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
-    """Coordinator for a single Polaris CU (Control Unit)."""
+    """Coordinator for a single Polaris CU (Control Unit) via local UDP."""
 
     def __init__(
         self,
         hass: HomeAssistant,
-        client: PolarisClient,
+        client: PolarisLocalClient,
         device_name: str,
     ) -> None:
         """Initialize."""
         self.client = client
         self.device_name = device_name
-        self.serial = client.serial
+        self.polaris_ip = client.ip
 
         super().__init__(
             hass,
@@ -49,8 +49,15 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
             update_interval=timedelta(seconds=POLARIS_SCAN_INTERVAL),
         )
 
+    @property
+    def serial(self) -> str:
+        """Return device serial (from last status, or IP-based fallback)."""
+        if self.client.device and self.client.device.serial:
+            return self.client.device.serial
+        return self.client.ip.replace(".", "_")
+
     async def _async_update_data(self) -> PolarisData:
-        """Fetch device + zone data from the cloud API."""
+        """Fetch device + zone data via local UDP."""
         try:
             device, zones = await self.client.async_update()
 
@@ -65,9 +72,14 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
             return PolarisData(device=device, zones=zones)
 
         except PolarisApiError as err:
-            raise UpdateFailed(f"Polaris API error: {err}") from err
+            raise UpdateFailed(f"Polaris error: {err}") from err
+        except TimeoutError as err:
+            raise UpdateFailed(f"Polaris timeout: {err}") from err
         except Exception as err:
-            _LOGGER.error("[%s] Error polling Polaris: %s", self.device_name, err, exc_info=True)
+            _LOGGER.error(
+                "[%s] Error polling Polaris: %s",
+                self.device_name, err, exc_info=True,
+            )
             raise UpdateFailed(f"Error polling Polaris: {err}") from err
 
     # ─── Helper properties ───────────────────────────────────────────
@@ -142,5 +154,5 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
             await self.async_request_refresh()
 
     async def async_shutdown(self) -> None:
-        """Shutdown coordinator."""
+        """Shutdown coordinator and disconnect client."""
         await self.client.close()

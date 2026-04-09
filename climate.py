@@ -1,4 +1,4 @@
-"""Climate platform for Polaris 5 zones.
+"""Climate platform for Polaris 5 zones (local UDP).
 
 Each Polaris zone is exposed as a HA Climate entity with:
 - HVAC modes: off, heat, cool

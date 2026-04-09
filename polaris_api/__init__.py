@@ -1,5 +1,5 @@
-"""Polaris API client for Tecnosystemi ProAir cloud service."""
-from .polaris_client import PolarisClient
+"""Polaris local UDP client for Tecnosystemi Polaris 5 devices."""
+from .polaris_client import PolarisLocalClient, PolarisApiError
 from .models import PolarisDevice, PolarisZone
 
-__all__ = ["PolarisClient", "PolarisDevice", "PolarisZone"]
+__all__ = ["PolarisLocalClient", "PolarisApiError", "PolarisDevice", "PolarisZone"]
