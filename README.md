@@ -79,6 +79,8 @@ The integration is configured via `configuration.yaml`. You can configure Pico d
 
 ### Pico devices (local)
 
+> **How to find the IP and PIN:** You can find the IP in your router's DHCP table. The PIN is the same one you use in the Tecnosystemi app when selecting a device.
+
 ```yaml
 open_pico:
   # Optional: Enable verbose logging (default: false)
@@ -105,7 +107,7 @@ open_pico:
 
 Polaris 5 devices communicate via the same local UDP protocol as Pico devices. You need the device's local IP address and PIN code.
 
-> **How to find the IP and PIN:** Connect to the Polaris device's WiFi access point (SSID starts with `POLARIS_`), or find its IP in your router's DHCP table. The PIN is the same one you use in the official Tecnosystemi app when selecting a device.
+> **How to find the IP and PIN:** You can find the IP in your router's DHCP table. The PIN is the same one you use in the Tecnosystemi app when selecting a device.
 
 ```yaml
 open_pico:
@@ -156,7 +158,7 @@ open_pico:
 ### Polaris 5
 - 🌐 **Local UDP Communication**: Direct device control, no cloud or internet required
 - 🌡️ **Climate Entities**: Per-zone temperature control (10-30°C, 0.5° step)
-- ❄️ **HVAC Modes**: Heating, Cooling (Raffrescamento, Deumidificazione, Ventilazione)
+- ❄️ **HVAC Modes**: Heating, Cooling (Cooling, Dehumidification, Ventilation)
 - 📊 **Zone Sensors**: Temperature, humidity, and operating mode per zone
 
 ### General
@@ -172,7 +174,7 @@ open_pico:
 ## Tested On 🧪
 - PICO PRO PLUS 30 **(ACD100052)**
 - PICO PRO PLUS 60 **(ACD100054)**
-- **Polaris 5** (via local UDP)
+- **Polaris 5**
 
 *Most features should work on all Pico and Polaris models*
 
