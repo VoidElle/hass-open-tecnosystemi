@@ -138,7 +138,7 @@ class PolarisDevice:
     ip: str = ""
     is_off: bool = False
     is_cooling: bool = False
-    operating_mode: int = 0  # 0=heating, 1=raffrescamento, 2=deumidificazione, 3=ventilazione
+    operating_mode: int = 0  # 0=heating, 1=cooling, 2=dehumidification, 3=ventilation
     f_inv: int = 0
     f_est: int = 0
     ir_present: int = 0
@@ -151,13 +151,13 @@ class PolarisDevice:
 
     @property
     def cooling_mode_name(self) -> str:
-        """Human-readable cooling mode name."""
+        """Cooling mode key (used in log messages; translated by HA in the UI)."""
         return {
-            0: "Riscaldamento",
-            1: "Raffrescamento",
-            2: "Deumidificazione",
-            3: "Ventilazione",
-        }.get(self.operating_mode, "Sconosciuto")
+            0: "heating",
+            1: "cooling",
+            2: "dehumidification",
+            3: "ventilation",
+        }.get(self.operating_mode, "unknown")
 
     @classmethod
     def from_local(cls, data: dict[str, Any]) -> PolarisDevice:
