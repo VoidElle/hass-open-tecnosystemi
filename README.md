@@ -221,6 +221,12 @@ Create a feature branch before starting work:
 git checkout -b feature/your-feature-name
 ```
 
+## Special Thanks 🙏
+
+A huge thank you to the contributors who made this project better:
+
+- **[skaccox](https://github.com/skaccox)** — Implemented the Polaris 5 support
+
 ## Work in progress 🚧
 - [X] Include the device sensors as entities
 - [X] Polaris 5 local UDP support
@@ -232,3 +238,4 @@ git checkout -b feature/your-feature-name
 - [ ] UI configuration flow (alternative to YAML)
 - [ ] Fix entities IDs, they are incomprehensible
 - [ ] Fix device unique IDs, currently they are based on IP address, it is not ideal
+- [ ] Translate the Polaris attributes (currently they are only in Italian)
