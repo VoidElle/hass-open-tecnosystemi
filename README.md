@@ -4,13 +4,17 @@
   <small><em>(Official Tecnosystemi logo not used due to copyright restrictions)</em></small>
   <br><br>
   <h1>🏠 Hassio Open Pico</h1>
-  <p><em>Home Assistant integration for Tecnosystemi Pico devices</em></p>
+  <p><em>Home Assistant integration for Tecnosystemi Pico and Polaris 5 devices</em></p>
 </div>
 
 
-Hassio Open Pico is a Home Assistant integration that enables management of Pico devices (manufactured by Tecnosystemi) through Home Assistant.
+Hassio Open Pico is a Home Assistant integration that enables management of Tecnosystemi devices through Home Assistant.
 
-This integration provides monitoring, control, and automation capabilities for Pico devices, offering an intuitive interface for Home Assistant users.
+**Supported device families:**
+- **Pico** — Local UDP-based ventilation and air quality units
+- **Polaris 5** — Local UDP-based HVAC zone controllers
+
+Both device families communicate over the **same local UDP protocol** (ports 40069/40070), requiring no cloud connectivity.
 
 This integration took inspiration from:
 - The official [Tecnosystemi](https://play.google.com/store/apps/details?id=it.tecnosystemi.TS&hl=it) mobile application
@@ -50,7 +54,7 @@ After installing the integration (via HACS or manually) **and restarting Home As
 
 1. Go to **Settings → Devices & Services**
 2. Click **➕ Add Integration**
-3. Search for **“Hassio Open Pico”**
+3. Search for **"Hassio Open Pico"**
 4. Select it from the list
 5. Go to the **configuration** step below
 
@@ -61,15 +65,16 @@ At this point, Home Assistant will load the integration and apply the configurat
 
 ## Configuration ⚙️
 
-The integration is configured via `configuration.yaml`. Add the following to your configuration file:
-```yaml
-# Open Pico Integration
-open_pico:
+The integration is configured via `configuration.yaml`. You can configure Pico devices, Polaris 5 devices, or both.
 
+### Pico devices (local)
+
+```yaml
+open_pico:
   # Optional: Enable verbose logging (default: false)
   verbose: false
 
-  # Required: List of devices
+  # Pico devices (local UDP)
   devices:
     - ip: "192.168.8.133"
       pin: "1234"
@@ -80,23 +85,51 @@ open_pico:
       name: "Bedroom"
 ```
 
-### Configuration Options
-
-| Parameter | Required | Default | Description |
-|-----------|----------|---------|-------------|
-| `verbose` | No | `false` | Enable detailed logging for debugging |
-| `devices` | Yes | - | List of Pico devices to manage |
-
-### Device Configuration
-
 | Parameter | Required | Description |
 |-----------|----------|-------------|
 | `ip` | Yes | Local IP address of the Pico device |
-| `pin` | Yes | Device PIN code (must match device configuration) |
-| `name` | Yes | Friendly name for the device |
+| `pin` | Yes | Device PIN code |
+| `name` | No | Friendly name for the device |
 
-### Multiple Devices
-Each Pico device must be listed separately in the `devices` section. The integration automatically handles concurrent communication using shared transport.
+### Polaris 5 devices (local)
+
+Polaris 5 devices communicate via the same local UDP protocol as Pico devices. You need the device's local IP address and PIN code.
+
+> **How to find the IP and PIN:** Connect to the Polaris device's WiFi access point (SSID starts with `POLARIS_`), or find its IP in your router's DHCP table. The PIN is the same one you use in the official Tecnosystemi app when selecting a device.
+
+```yaml
+open_pico:
+  # Polaris 5 devices (local UDP)
+  polaris_devices:
+    - ip: "192.168.8.200"
+      pin: "0000"
+      name: "Polaris Living Room"
+```
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `ip` | Yes | Local IP address of the Polaris CU device |
+| `pin` | Yes | Device PIN code (the one you enter when selecting a device in the app) |
+| `name` | No | Friendly name (defaults to the name configured in the device) |
+
+### Mixed configuration (Pico + Polaris)
+
+You can configure both Pico and Polaris devices in the same integration:
+
+```yaml
+open_pico:
+  verbose: false
+
+  devices:
+    - ip: "192.168.8.133"
+      pin: "1234"
+      name: "Pico Living Room"
+
+  polaris_devices:
+    - ip: "192.168.8.200"
+      pin: "0000"
+      name: "Polaris Living Room"
+```
 
 **After configuration:**
 1. Save your `configuration.yaml`
@@ -104,23 +137,34 @@ Each Pico device must be listed separately in the `devices` section. The integra
 3. Restart Home Assistant
 
 ## Features ✨
+
+### Pico
 - 🌐 **Local UDP Communication**: Direct device control without cloud dependency
-- 🔄 **Multi-Device Support**: Control multiple Pico devices simultaneously
 - 📊 **Real-time Monitoring**: Temperature, humidity, CO2, TVOC sensors
 - 🎛️ **Full Control**: Operating modes, fan speed, night mode, LED control
+
+### Polaris 5
+- 🌐 **Local UDP Communication**: Direct device control, no cloud or internet required
+- 🌡️ **Climate Entities**: Per-zone temperature control (10-30°C, 0.5° step)
+- ❄️ **HVAC Modes**: Heating, Cooling (Raffrescamento, Deumidificazione, Ventilazione)
+- 📊 **Zone Sensors**: Temperature, humidity, and operating mode per zone
+
+### General
+- 🔄 **Multi-Device Support**: Control multiple devices of both types simultaneously
 - 🏷️ **Device Organization**: Use Home Assistant areas for logical grouping
 - ⚡ **Concurrent Polling**: Efficient updates across all devices
+- 🔌 **Shared UDP Transport**: All devices share a single UDP socket, no port conflicts
 
 ## Limitations ⚠️
-- Support only for Pico devices
-- Local network access required (devices must be on same network as Home Assistant)
+- Both Pico and Polaris require local network access (devices must be on same network as Home Assistant)
 - Configuration via YAML only (no UI configuration flow yet)
 
 ## Tested On 🧪
 - PICO PRO PLUS 30 **(ACD100052)**
 - PICO PRO PLUS 60 **(ACD100054)**
+- **Polaris 5** (via local UDP)
 
-*Most features should work on all Pico models*
+*Most features should work on all Pico and Polaris models*
 
 ## Contributing 🤝
 
@@ -141,6 +185,10 @@ Contributions are welcome!
 
 ## Work in progress 🚧
 - [X] Include the device sensors as entities
+- [X] Polaris 5 local UDP support
+- [X] Polaris climate entities (heat/cool/off per zone)
+- [X] Polaris cooling sub-modes (Raffrescamento, Deumidificazione, Ventilazione)
+- [ ] Polaris auto-discovery via network scan
 - [ ] Include the possibility to show devices' errors (Waiting for maintenance flag to be triggered on my devices)
 - [ ] Include the possibility to reset the maintenance flag when maintenance is performed (Waiting for maintenance flag to be triggered on my devices)
 - [ ] UI configuration flow (alternative to YAML)
