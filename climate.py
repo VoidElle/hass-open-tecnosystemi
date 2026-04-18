@@ -5,7 +5,7 @@ Each Polaris zone is exposed as a HA Climate entity with:
 - Temperature control: 10-30°C, step 0.5
 - Current temperature reading
 - Current humidity reading (if available)
-- Preset modes for cooling sub-modes (Raffrescamento, Deumidificazione, Ventilazione)
+- Preset modes for cooling sub-modes (Cooling, Dehumidification, Ventilation)
 """
 from __future__ import annotations
 
@@ -33,16 +33,16 @@ from .polaris_api.models import PolarisZone
 
 _LOGGER = logging.getLogger(__name__)
 
-# Cooling sub-mode presets
-PRESET_RAFFRESCAMENTO = "Raffrescamento"
-PRESET_DEUMIDIFICAZIONE = "Deumidificazione"
-PRESET_VENTILAZIONE = "Ventilazione"
+# Cooling sub-mode presets (translation keys)
+PRESET_COOLING = "cooling"
+PRESET_DEHUMIDIFICATION = "dehumidification"
+PRESET_VENTILATION = "ventilation"
 
-_COOLING_PRESETS = [PRESET_RAFFRESCAMENTO, PRESET_DEUMIDIFICAZIONE, PRESET_VENTILAZIONE]
+_COOLING_PRESETS = [PRESET_COOLING, PRESET_DEHUMIDIFICATION, PRESET_VENTILATION]
 _PRESET_TO_MODE = {
-    PRESET_RAFFRESCAMENTO: 1,
-    PRESET_DEUMIDIFICAZIONE: 2,
-    PRESET_VENTILAZIONE: 3,
+    PRESET_COOLING: 1,
+    PRESET_DEHUMIDIFICATION: 2,
+    PRESET_VENTILATION: 3,
 }
 _MODE_TO_PRESET = {v: k for k, v in _PRESET_TO_MODE.items()}
 
@@ -79,6 +79,7 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
     """Climate entity for a single Polaris zone."""
 
     _attr_has_entity_name = True
+    _attr_translation_key = "polaris_zone"
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_target_temperature_step = 0.5
     _attr_min_temp = 10.0
@@ -203,7 +204,7 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
             await self._coordinator.async_set_heating_mode()
             await self._coordinator.async_turn_zone_on(self._zone_id)
         elif hvac_mode == HVACMode.COOL:
-            # Default to Raffrescamento when switching to cool
+            # Default to Cooling when switching to cool
             dev = self._device_data
             current_mode = dev.operating_mode if dev else 0
             if current_mode == 0:

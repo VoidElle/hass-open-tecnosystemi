@@ -238,4 +238,4 @@ A huge thank you to the contributors who made this project better:
 - [ ] UI configuration flow (alternative to YAML)
 - [ ] Fix entities IDs, they are incomprehensible
 - [ ] Fix device unique IDs, currently they are based on IP address, it is not ideal
-- [ ] Translate the Polaris attributes (currently they are only in Italian)
+- [X] Translate the Polaris attributes (currently they are only in Italian)

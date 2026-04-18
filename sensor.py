@@ -344,22 +344,22 @@ class PolarisOperatingModeSensor(CoordinatorEntity, SensorEntity):
 
     _attr_has_entity_name = True
     _attr_icon = "mdi:thermostat"
+    _attr_translation_key = "polaris_operating_mode"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = ["heating", "cooling", "dehumidification", "ventilation"]
 
     def __init__(self, coordinator):
         super().__init__(coordinator)
         self._coordinator = coordinator
         self._attr_unique_id = f"polaris_{coordinator.serial}_operating_mode"
 
-    @property
-    def name(self) -> str:
-        return "Operating Mode"
 
     @property
     def native_value(self) -> str | None:
         dev = self.coordinator.data.device if self.coordinator.data else None
         if not dev:
             return None
-        return POLARIS_COOLING_MODES.get(dev.operating_mode, "Sconosciuto")
+        return POLARIS_COOLING_MODES.get(dev.operating_mode)
 
     @property
     def extra_state_attributes(self):

@@ -3,6 +3,19 @@
     "unsupported_mode": "La modalitá {mode} non supporta il controllo della velocitá della ventola"
   },
   "entity": {
+    "climate": {
+      "polaris_zone": {
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "cooling": "Raffrescamento",
+              "dehumidification": "Deumidificazione",
+              "ventilation": "Ventilazione"
+            }
+          }
+        }
+      }
+    },
     "fan": {
       "pico": {
         "state_attributes": {
@@ -41,6 +54,17 @@
           "humidity_co2_recovery": "Umiditá CO₂ - Recupero",
           "humidity_co2_extraction": "Umiditá CO₂ - Estrazione",
           "natural_ventilation": "Ventilazione Naturale"
+        }
+      }
+    },
+    "sensor": {
+      "polaris_operating_mode": {
+        "name": "Modalità Operativa",
+        "state": {
+          "heating": "Riscaldamento",
+          "cooling": "Raffrescamento",
+          "dehumidification": "Deumidificazione",
+          "ventilation": "Ventilazione"
         }
       }
     }

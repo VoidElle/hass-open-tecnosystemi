@@ -37,8 +37,8 @@ REVERSED_TARGET_HUMIDITY_OPTIONS = {v: k for k, v in TARGET_HUMIDITY_OPTIONS.ite
 POLARIS_SCAN_INTERVAL = 5  # seconds (local UDP, can poll faster)
 
 POLARIS_COOLING_MODES = {
-    0: "Riscaldamento",
-    1: "Raffrescamento",
-    2: "Deumidificazione",
-    3: "Ventilazione",
+    0: "heating",
+    1: "cooling",
+    2: "dehumidification",
+    3: "ventilation",
 }

@@ -3,6 +3,19 @@
     "unsupported_mode": "Mode {mode} does not support speed control"
   },
   "entity": {
+    "climate": {
+      "polaris_zone": {
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "cooling": "Cooling",
+              "dehumidification": "Dehumidification",
+              "ventilation": "Ventilation"
+            }
+          }
+        }
+      }
+    },
     "fan": {
       "pico": {
         "state_attributes": {
@@ -41,6 +54,17 @@
           "humidity_co2_recovery": "Humidity CO₂ - Recovery",
           "humidity_co2_extraction": "Humidity CO₂ - Extraction",
           "natural_ventilation": "Natural Ventilation"
+        }
+      }
+    },
+    "sensor": {
+      "polaris_operating_mode": {
+        "name": "Operating Mode",
+        "state": {
+          "heating": "Heating",
+          "cooling": "Cooling",
+          "dehumidification": "Dehumidification",
+          "ventilation": "Ventilation"
         }
       }
     }
