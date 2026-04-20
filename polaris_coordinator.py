@@ -1,4 +1,4 @@
-"""DataUpdateCoordinator for Polaris 5 devices (local UDP)."""
+"""DataUpdateCoordinator for Polaris 5 devices (local TCP port 1235)."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -15,7 +15,7 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-# Local UDP polling — can be faster than cloud since no API billing concerns
+# Local TCP polling (port 1235)
 POLARIS_SCAN_INTERVAL = 5
 
 
@@ -28,7 +28,7 @@ class PolarisData:
 
 
 class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
-    """Coordinator for a single Polaris CU (Control Unit) via local UDP."""
+    """Coordinator for a single Polaris CU (Control Unit) via local TCP."""
 
     def __init__(
         self,
@@ -57,7 +57,7 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
         return self.client.ip.replace(".", "_")
 
     async def _async_update_data(self) -> PolarisData:
-        """Fetch device + zone data via local UDP."""
+        """Fetch device + zone data via local TCP."""
         try:
             device, zones = await self.client.async_update()
 

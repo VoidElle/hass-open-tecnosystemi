@@ -1,8 +1,8 @@
 """Open Pico integration for Home Assistant.
 
-Supports two device families, both using local UDP communication:
-  - Pico: Ventilation/air quality units (ports 40069/40070)
-  - Polaris 5: HVAC zone controllers (same ports, same protocol structure)
+Supports two device families:
+  - Pico: Ventilation/air quality units (local UDP, ports 40069/40070)
+  - Polaris 5: HVAC zone controllers (local TCP, port 1235)
 """
 from __future__ import annotations
 
@@ -44,7 +44,7 @@ PICO_DEVICE_SCHEMA = vol.Schema({
     vol.Optional("name"): cv.string,
 })
 
-# Define the Polaris device schema (local UDP — same ports as Pico)
+# Define the Polaris device schema (local TCP port 1235)
 POLARIS_DEVICE_SCHEMA = vol.Schema({
     vol.Required("ip"): cv.string,
     vol.Required("pin"): cv.string,
@@ -98,10 +98,10 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
         if successful_pico > 0:
             platforms_needed.update(PICO_PLATFORMS)
 
-    # ─── Set up Polaris devices (local UDP) ───────────────────────────
+    # ─── Set up Polaris devices (local TCP) ───────────────────────────
     if polaris_devices:
         successful_polaris = await _setup_polaris_devices(
-            hass, polaris_devices, local_port, verbose
+            hass, polaris_devices, verbose
         )
         if successful_polaris > 0:
             platforms_needed.update(POLARIS_PLATFORMS)
@@ -198,13 +198,11 @@ async def _setup_pico_devices(
 async def _setup_polaris_devices(
     hass: HomeAssistant,
     devices: list[dict],
-    local_port: int,
     verbose: bool,
 ) -> int:
-    """Set up Polaris devices with local UDP transport.
+    """Set up Polaris devices with local TCP transport (port 1235).
 
-    Each entry requires 'ip' and 'pin' (same as Pico devices).
-    The Polaris CU communicates on the same UDP ports (40069/40070).
+    Each entry requires 'ip' and 'pin'.
     """
     from .polaris_api.polaris_client import PolarisLocalClient
     from .polaris_coordinator import PolarisCoordinator
@@ -225,33 +223,31 @@ async def _setup_polaris_devices(
                 ip=polaris_ip,
                 pin=pin,
                 device_id=device_id,
-                device_port=40070,
-                local_port=local_port,
+                port=1235,
                 timeout=15,
                 retry_attempts=3,
                 retry_delay=2.0,
                 verbose=verbose,
             )
 
-            await client.connect()
-
-            # Initial fetch to verify connectivity
+            # connect() does the initial async_update() internally,
+            # so device + zones are already populated after this call.
             try:
                 async with asyncio.timeout(30):
-                    device, zones = await client.async_update()
+                    await client.connect()
+                    device = client.device
+                    zones = client.zones
             except asyncio.TimeoutError:
                 _LOGGER.error(
                     "Timeout connecting to Polaris '%s' (%s)",
                     device_name, polaris_ip,
                 )
-                await client.disconnect()
                 continue
             except Exception as err:
                 _LOGGER.error(
-                    "Failed initial fetch for Polaris '%s' (%s): %s",
+                    "Failed to connect to Polaris '%s' (%s): %s",
                     device_name, polaris_ip, err,
                 )
-                await client.disconnect()
                 continue
 
             # Use the name from the device if not explicitly set in config

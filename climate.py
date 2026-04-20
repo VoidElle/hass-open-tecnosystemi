@@ -1,4 +1,4 @@
-"""Climate platform for Polaris 5 zones (local UDP).
+"""Climate platform for Polaris 5 zones (local TCP port 1235).
 
 Each Polaris zone is exposed as a HA Climate entity with:
 - HVAC modes: off, heat, cool

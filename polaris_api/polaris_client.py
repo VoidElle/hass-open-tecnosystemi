@@ -1,80 +1,65 @@
-"""Local UDP client for Tecnosystemi Polaris 5 (CU) devices.
+"""Local TCP client for Tecnosystemi Polaris 5 (CU) devices.
 
-Uses the same UDP protocol as Pico devices (ports 40069/40070) with
-Polaris-specific commands (upd_cu, upd_zona, stato_sync).
+Communicates directly with the device over TCP port 1235 — the same
+transport used by the official Tecnosystemi Android app (MySocket class).
 
-Discovered from the Tecnosystemi Android APK DEX analysis:
-- UDPSocket class: portaDest=40070, portaRead=40069
-- CmdPICO class: {cmd, frm, idp, pin} base command for ALL devices
-- JSON_OFFLINE_COMMAND constants: snake_case field names
+Protocol:
+- Commands are sent as a UTF-8 JSON string over a raw TCP socket.
+- The device replies with a JSON string.
+- Each command/response pair uses its own short-lived connection
+  (matches the MySocket.sendAndReceive pattern in the APK).
+- Command key is "c" (not "cmd"). No IDP or frm envelope needed.
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
-import time
 from typing import Any
 
-from ..open_pico_local_api.shared_transport_manager import SharedTransportManager
 from .models import PolarisDevice, PolarisZone
 
 _LOGGER = logging.getLogger(__name__)
 
+_BUFFER_SIZE = 4096
+
 
 class PolarisLocalClient:
-    """Async local UDP client for Polaris 5 CU devices.
-
-    Reuses the SharedTransportManager from PicoClient so both device
-    families share a single UDP socket on port 40069.
-    """
+    """Async local TCP client for Polaris 5 CU devices."""
 
     def __init__(
         self,
         ip: str,
         pin: str,
         device_id: str | None = None,
-        device_port: int = 40070,
-        local_port: int = 40069,
-        timeout: float = 5,
+        port: int = 1235,
+        timeout: float = 5.0,
         retry_attempts: int = 3,
-        retry_delay: float = 2.0,
+        retry_delay: float = 1.0,
         verbose: bool = False,
     ) -> None:
-        """Initialize the Polaris local client.
+        """Initialise the Polaris local client.
 
         Args:
             ip: IP address of the Polaris CU device.
             pin: Device PIN code.
-            device_id: Unique device identifier (auto-generated if omitted).
-            device_port: UDP port to send commands to (default 40070).
-            local_port: Local UDP port to listen on (default 40069).
-            timeout: Command response timeout in seconds.
-            retry_attempts: Number of retries on failure.
+            device_id: Friendly identifier (auto-generated if omitted).
+            port: TCP port on the device (default 1235).
+            timeout: Per-command socket timeout in seconds.
+            retry_attempts: Number of retries on failure/timeout.
             retry_delay: Delay between retries in seconds.
             verbose: Enable verbose debug logging.
         """
         self.ip = ip
         self.pin = pin
-        self.device_port = device_port
-        self.local_port = local_port
+        self.port = port
         self.timeout = timeout
         self.retry_attempts = retry_attempts
         self.retry_delay = retry_delay
         self.verbose = verbose
 
-        self.device_id = device_id or f"polaris_{ip}:{device_port}"
+        self.device_id = device_id or f"polaris_{ip}:{port}"
 
-        # Shared transport
-        self._transport_manager: SharedTransportManager | None = None
-
-        # IDP management (same mechanism as PicoClient)
-        self._idp_counter = 1
-        self._idp_range_start = 1
-        self._idp_range_size = 10000
-
-        self._response_queue: asyncio.Queue = asyncio.Queue()
-        self._lock = asyncio.Lock()
         self._connected = False
 
         # Cached state
@@ -85,74 +70,37 @@ class PolarisLocalClient:
 
     @property
     def connected(self) -> bool:
-        """Check if device is connected."""
         return self._connected
 
     @property
     def device(self) -> PolarisDevice | None:
-        """Last known device state."""
         return self._device
 
     @property
     def zones(self) -> list[PolarisZone]:
-        """Last known zones."""
         return self._zones
 
     # ─── Connection management ──────────────────────────────────────
 
     async def connect(self) -> None:
-        """Connect to the Polaris device via shared UDP transport."""
+        """Verify connectivity by performing an initial async_update.
+
+        Sets _connected=True and populates _device/_zones on success.
+        TCP is stateless per-command so there is nothing to keep open.
+        """
         if self._connected:
             return
-
-        try:
-            self._transport_manager = await SharedTransportManager.get_instance()
-
-            if not self._transport_manager.is_initialized:
-                await self._transport_manager.initialize(
-                    local_port=self.local_port,
-                    verbose=self.verbose,
-                )
-
-            self._idp_range_start, self._idp_range_size = (
-                await self._transport_manager.register_device(
-                    device_id=self.device_id,
-                    ip=self.ip,
-                    port=self.device_port,
-                    response_queue=self._response_queue,
-                    event_callbacks={},
-                )
-            )
-
-            self._idp_counter = self._idp_range_start
-            self._connected = True
-
-            if self.verbose:
-                _LOGGER.debug(
-                    "Connected Polaris '%s' to %s:%d (IDP range %d-%d)",
-                    self.device_id, self.ip, self.device_port,
-                    self._idp_range_start,
-                    self._idp_range_start + self._idp_range_size - 1,
-                )
-
-        except Exception as err:
-            raise ConnectionError(f"Failed to connect Polaris: {err}") from err
+        await self.async_update()  # raises TimeoutError / ConnectionError on failure
+        if self.verbose:
+            _LOGGER.debug("[%s] Connected to %s:%d", self.device_id, self.ip, self.port)
 
     async def disconnect(self) -> None:
-        """Disconnect from the Polaris device."""
-        if not self._connected:
-            return
-
-        if self._transport_manager:
-            await self._transport_manager.unregister_device(self.device_id)
-
+        """Mark client as disconnected (TCP is stateless per-command)."""
         self._connected = False
-
         if self.verbose:
-            _LOGGER.debug("Disconnected Polaris '%s'", self.device_id)
+            _LOGGER.debug("[%s] Disconnected", self.device_id)
 
     async def close(self) -> None:
-        """Alias for disconnect (API compat with old cloud client)."""
         await self.disconnect()
 
     async def __aenter__(self):
@@ -168,45 +116,31 @@ class PolarisLocalClient:
     async def get_status(self) -> dict[str, Any]:
         """Send stato_sync and return the raw response dict.
 
-        The Polaris CU responds with a JSON object containing:
-        - CU-level fields: is_off, is_cool, cool_mod, f_inv, f_est, ...
-        - zones: list of zone objects with id_zona, name, temp, t_set, ...
+        No pre-connection required — each TCP call is stateless.
         """
-        if not self._connected:
-            raise ConnectionError("Not connected to Polaris device")
-
         cmd = {
-            "cmd": "stato_sync",
-            "frm": "app",
+            "c": "stato_sync",
             "pin": self.pin,
         }
-
-        response = await self._execute_command_with_retry(cmd)
-        if not response:
-            raise TimeoutError(f"Failed to get Polaris status from {self.ip}")
-
+        response = await self._send_command_with_retry(cmd)
+        if response is None:
+            raise TimeoutError(f"No response from Polaris device at {self.ip}:{self.port}")
         return response
 
     async def async_update(self) -> tuple[PolarisDevice, list[PolarisZone]]:
-        """Full refresh: fetch status and parse device + zones.
-
-        Returns (PolarisDevice, list[PolarisZone]).
-        """
+        """Full refresh: fetch status and parse device + zones."""
         raw = await self.get_status()
 
-        # Parse device-level data
         self._device = PolarisDevice.from_local(raw)
+        self._connected = True
 
-        # Parse zones
-        zones_data = raw.get("zones", raw.get("Zones", []))
-        if isinstance(zones_data, list):
-            self._zones = [
-                PolarisZone.from_local(z)
-                for z in zones_data
-                if isinstance(z, dict)
-            ]
-        else:
-            self._zones = []
+        # local: "zone" (JSON_OFFLINE_COMMAND_ZONE), cloud: "Zones" (JSON_CU_ZONE)
+        zones_data = raw.get("zone", raw.get("Zones", []))
+        self._zones = [
+            PolarisZone.from_local(z)
+            for z in zones_data
+            if isinstance(z, dict)
+        ] if isinstance(zones_data, list) else []
 
         _LOGGER.debug(
             "[%s] Polaris update: on=%s, mode=%s, zones=%d",
@@ -230,21 +164,18 @@ class PolarisLocalClient:
         fancoil_set: int | None = None,
         serranda_set: int | None = None,
     ) -> None:
-        """Update a zone's settings via local UDP.
+        """Update a zone's settings.
 
-        Uses the upd_zona command format from the APK DEX:
-        {"c":"upd_zona", "id_zona":..., "name":..., "is_off":...,
-         "t_set":..., "is_crono":..., "fan_set":..., "shu_set":..., "pin":...}
+        Command format from APK DEX (Zona.update_ZONA_Command):
+        {"c":"upd_zona","id_zona":...,"name":...,"is_off":...,"t_set":"<int*10>",
+         "fan_set":...,"shu_set":...,"is_crono":...,"pin":...}
         """
-        if not self._connected:
-            raise ConnectionError("Not connected to Polaris device")
-
         effective_is_off = is_off if is_off is not None else zone.is_off
         effective_temp = set_temp if set_temp is not None else (zone.set_temp or 20.0)
         effective_crono = is_crono if is_crono is not None else zone.is_crono_mode
         set_temp_int = round(effective_temp * 10)
 
-        cmd_data: dict[str, Any] = {
+        cmd: dict[str, Any] = {
             "c": "upd_zona",
             "id_zona": zone.zone_id,
             "name": zone.name,
@@ -254,34 +185,37 @@ class PolarisLocalClient:
             "pin": self.pin,
         }
 
-        # Add fan_set / shu_set if available
+        # fan_set / shu_set — protocol always sends both with the same value.
+        # Hardware presence: zone.fancoil / zone.serranda == -1 → not installed.
+        # When only one type present, its set-point drives both fields.
+        # When both present, fancoil takes priority (lastFancoil=True default).
         eff_fancoil = fancoil_set if fancoil_set is not None else zone.fancoil_set
         eff_serranda = serranda_set if serranda_set is not None else zone.serranda_set
+        fancoil_present = zone.fancoil != -1
+        serranda_present = zone.serranda != -1
 
-        if eff_fancoil is not None and eff_fancoil != -1:
-            fan_val = 16 if eff_fancoil == 7 else eff_fancoil
-            cmd_data["fan_set"] = fan_val
-            cmd_data["shu_set"] = fan_val
-        elif eff_serranda is not None and eff_serranda != -1:
-            shu_val = 16 if eff_serranda == 7 else eff_serranda
-            cmd_data["shu_set"] = shu_val
-            cmd_data["fan_set"] = shu_val
+        if not fancoil_present and serranda_present:
+            if eff_serranda is not None and eff_serranda != -1:
+                shu_val = 16 if eff_serranda == 7 else eff_serranda
+                cmd["shu_set"] = shu_val
+                cmd["fan_set"] = shu_val
+        else:
+            if eff_fancoil is not None and eff_fancoil != -1:
+                fan_val = 16 if eff_fancoil == 7 else eff_fancoil
+                cmd["fan_set"] = fan_val
+                cmd["shu_set"] = fan_val
+            elif serranda_present and eff_serranda is not None and eff_serranda != -1:
+                shu_val = 16 if eff_serranda == 7 else eff_serranda
+                cmd["shu_set"] = shu_val
+                cmd["fan_set"] = shu_val
 
-        # Wrap in standard command envelope
-        cmd = {
-            "cmd": "upd_zona",
-            "frm": "app",
-            "pin": self.pin,
-            **cmd_data,
-        }
-
-        result = await self._execute_command_with_retry(cmd)
+        result = await self._send_command_with_retry(cmd)
         if result is None:
-            _LOGGER.warning("No response for upd_zona (zone %d)", zone.zone_id)
+            _LOGGER.warning("[%s] No response for upd_zona (zone %d)", self.device_id, zone.zone_id)
 
         _LOGGER.info(
-            "Zone '%s' updated: is_off=%s, temp=%.1f°C",
-            zone.name, effective_is_off, effective_temp,
+            "[%s] Zone '%s' updated: is_off=%s, temp=%.1f°C",
+            self.device_id, zone.name, effective_is_off, effective_temp,
         )
 
     # ─── Public API: Write (CU / device) ────────────────────────────
@@ -293,44 +227,35 @@ class PolarisLocalClient:
         is_cooling: bool | None = None,
         operating_mode: int | None = None,
     ) -> None:
-        """Update CU (device-level) settings via local UDP.
+        """Update CU (device-level) settings.
 
-        Uses the upd_cu command format from the APK DEX:
-        {"c":"upd_cu", "pin":..., "is_off":..., "is_cool":...,
-         "cool_mod":..., "t_can":..., "f_inv":..., "f_est":...}
+        Command format from APK DEX (ControlUnit.update_CU_command):
+        {"c":"upd_cu","pin":...,"is_off":...,"is_cool":...,"cool_mod":...,
+         "t_can":<°C*10>,"f_inv":...,"f_est":...}
         """
-        if not self._connected:
-            raise ConnectionError("Not connected to Polaris device")
-
         dev = self._device
         eff_is_off = is_off if is_off is not None else (dev.is_off if dev else False)
         eff_is_cooling = is_cooling if is_cooling is not None else (dev.is_cooling if dev else False)
         eff_op_mode = operating_mode if operating_mode is not None else (dev.operating_mode if dev else 0)
 
-        cmd_data = {
+        cmd: dict[str, Any] = {
             "c": "upd_cu",
             "pin": self.pin,
             "is_off": 1 if eff_is_off else 0,
             "is_cool": 1 if eff_is_cooling else 0,
             "cool_mod": eff_op_mode,
-            "t_can": 0,
+            "t_can": (dev.t_can * 10) if dev else 0,
             "f_inv": dev.f_inv if dev else 0,
             "f_est": dev.f_est if dev else 0,
         }
 
-        cmd = {
-            "cmd": "upd_cu",
-            "frm": "app",
-            "pin": self.pin,
-            **cmd_data,
-        }
-
-        result = await self._execute_command_with_retry(cmd)
+        result = await self._send_command_with_retry(cmd)
         if result is None:
-            _LOGGER.warning("No response for upd_cu")
+            _LOGGER.warning("[%s] No response for upd_cu", self.device_id)
 
         _LOGGER.info(
-            "CU '%s' updated: is_off=%s, cooling=%s, mode=%d",
+            "[%s] CU '%s' updated: is_off=%s, cooling=%s, mode=%d",
+            self.device_id,
             dev.name if dev else self.ip,
             eff_is_off, eff_is_cooling, eff_op_mode,
         )
@@ -338,157 +263,99 @@ class PolarisLocalClient:
     # ─── Convenience methods ────────────────────────────────────────
 
     async def turn_on(self) -> None:
-        """Turn the device on."""
         await self.update_cu(is_off=False)
 
     async def turn_off(self) -> None:
-        """Turn the device off."""
         await self.update_cu(is_off=True)
 
     async def set_cooling_mode(self, mode: int) -> None:
-        """Set cooling operating mode (1=raff, 2=deum, 3=vent)."""
+        """Set cooling mode (1=raffrescamento, 2=deumidificazione, 3=ventilazione)."""
         await self.update_cu(is_off=False, is_cooling=True, operating_mode=mode)
 
     async def set_heating_mode(self) -> None:
-        """Switch to heating mode."""
         await self.update_cu(is_off=False, is_cooling=False, operating_mode=0)
 
     async def set_zone_temp(self, zone: PolarisZone, temperature: float) -> None:
-        """Set zone target temperature."""
         await self.update_zone(zone, set_temp=temperature)
 
     async def turn_zone_on(self, zone: PolarisZone) -> None:
-        """Turn a zone on."""
         await self.update_zone(zone, is_off=False)
 
     async def turn_zone_off(self, zone: PolarisZone) -> None:
-        """Turn a zone off."""
         await self.update_zone(zone, is_off=True)
 
-    # ─── IDP management (same pattern as PicoClient) ────────────────
+    # ─── TCP transport ──────────────────────────────────────────────
 
-    async def _get_next_idp(self) -> int:
-        """Get next IDP within allocated range."""
-        async with self._lock:
-            idp = self._idp_counter
-            self._idp_counter += 1
-            if self._idp_counter >= (self._idp_range_start + self._idp_range_size):
-                self._idp_counter = self._idp_range_start
-            return idp
-
-    async def _reset_idp_counter(self) -> None:
-        """Reset IDP counter to start of allocated range."""
-        async with self._lock:
-            self._idp_counter = self._idp_range_start
-
-    # ─── UDP send/receive (same pattern as PicoClient) ──────────────
-
-    async def _send_udp_packet(self, cmd: dict[str, Any]) -> bool:
-        """Send a raw UDP packet to the device."""
-        try:
-            data = json.dumps(cmd).encode("utf-8")
-            await self._transport_manager.send_to_device(self.device_id, data)
-
-            if self.verbose:
-                cmd_name = cmd.get("cmd", cmd.get("c", "unknown"))
-                _LOGGER.debug(
-                    "-> [%s] SENT: %s (idp:%s)",
-                    self.device_id, cmd_name, cmd.get("idp"),
-                )
-            return True
-
-        except Exception as err:
-            if self.verbose:
-                _LOGGER.debug("[%s] Send error: %s", self.device_id, err)
-            raise
-
-    async def _execute_command_with_retry(
+    async def _send_command_with_retry(
         self,
-        cmd_dict: dict[str, Any],
-        retry: bool = True,
+        cmd: dict[str, Any],
     ) -> dict[str, Any] | None:
-        """Execute a command with IDP sync retry logic."""
-        max_attempts = self.retry_attempts if retry else 1
-        max_idp_sync = 5
-
-        for attempt in range(1, max_attempts + 1):
+        """Send a command with retries, returning the parsed response or None."""
+        for attempt in range(1, self.retry_attempts + 1):
             if attempt > 1:
                 if self.verbose:
-                    _LOGGER.debug("[%s] Retry %d/%d", self.device_id, attempt, max_attempts)
+                    _LOGGER.debug("[%s] Retry %d/%d", self.device_id, attempt, self.retry_attempts)
                 await asyncio.sleep(self.retry_delay)
 
-            for idp_sync_attempt in range(max_idp_sync):
-                idp = await self._get_next_idp()
-                cmd = {**cmd_dict, "idp": idp}
-
-                if not await self._send_udp_packet(cmd):
-                    continue
-
-                response = await self._wait_for_response(idp, timeout=2.0)
-
-                if response:
-                    if idp_sync_attempt > 0 and self.verbose:
-                        _LOGGER.debug(
-                            "[%s] IDP synchronized after %d increments",
-                            self.device_id, idp_sync_attempt,
-                        )
-                    return response
-
+            try:
+                result = await asyncio.wait_for(
+                    self._send_and_receive(cmd),
+                    timeout=self.timeout,
+                )
+                if result is not None:
+                    return result
+            except asyncio.TimeoutError:
                 if self.verbose:
                     _LOGGER.debug(
-                        "[%s] No response for IDP %d — likely out of sync",
-                        self.device_id, idp,
+                        "[%s] Timeout on attempt %d for '%s'",
+                        self.device_id, attempt, cmd.get("c"),
                     )
-
-            # After all IDP sync attempts, reset
-            if attempt < max_attempts:
-                await self._reset_idp_counter()
+            except Exception as err:
+                if self.verbose:
+                    _LOGGER.debug("[%s] Error on attempt %d: %s", self.device_id, attempt, err)
 
         return None
 
-    async def _wait_for_response(
-        self, idp: int, timeout: float
-    ) -> dict[str, Any] | None:
-        """Wait for response matching the given IDP."""
-        got_ack = False
-        end_time = time.time() + timeout
-        ack_timeout = 2.0
-        ack_received_time = None
+    async def _send_and_receive(self, cmd: dict[str, Any]) -> dict[str, Any] | None:
+        """Open a TCP connection, send the command JSON, read and return the response.
 
-        while time.time() < end_time:
-            remaining = end_time - time.time()
-            if remaining <= 0:
-                break
+        Mirrors MySocket.sendAndReceive: each call opens and closes its own socket.
+        """
+        payload = json.dumps(cmd).encode("utf-8")
 
-            if got_ack and ack_received_time:
-                if time.time() - ack_received_time > ack_timeout:
-                    return None
+        if self.verbose:
+            _LOGGER.debug("-> [%s] SEND '%s': %s", self.device_id, cmd.get("c"), payload.decode())
 
+        reader, writer = await asyncio.open_connection(self.ip, self.port)
+        try:
+            writer.write(payload)
+            await writer.drain()
+
+            data = b""
+            while True:
+                chunk = await reader.read(_BUFFER_SIZE)
+                if not chunk:
+                    break
+                data += chunk
+                if len(chunk) < _BUFFER_SIZE:
+                    # Partial read = end of response (mirrors Java's i < 1000 check)
+                    break
+
+            if not data:
+                return None
+
+            raw_str = data.decode("utf-8")
+            if self.verbose:
+                _LOGGER.debug("<- [%s] RECV: %s", self.device_id, raw_str)
+
+            return json.loads(raw_str)
+
+        finally:
+            writer.close()
             try:
-                response, addr = await asyncio.wait_for(
-                    self._response_queue.get(),
-                    timeout=min(remaining, 0.5),
-                )
-
-                if response.get("idp") != idp:
-                    continue
-
-                # ACK from device
-                if response.get("res") == 99 and response.get("frm") == "mst":
-                    got_ack = True
-                    ack_received_time = time.time()
-
-                # Data response
-                elif response.get("res") != 99:
-                    # Send ACK back
-                    ack = {"idp": idp, "frm": "app", "res": 99}
-                    await self._send_udp_packet(ack)
-                    return response
-
-            except asyncio.TimeoutError:
-                continue
-
-        return None
+                await writer.wait_closed()
+            except Exception:
+                pass
 
 
 class PolarisApiError(Exception):

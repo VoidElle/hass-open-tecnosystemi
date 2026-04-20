@@ -34,7 +34,7 @@ TARGET_HUMIDITY_OPTIONS = {
 REVERSED_TARGET_HUMIDITY_OPTIONS = {v: k for k, v in TARGET_HUMIDITY_OPTIONS.items()}
 
 # ─── Polaris constants ───────────────────────────────────────────────
-POLARIS_SCAN_INTERVAL = 5  # seconds (local UDP, can poll faster)
+POLARIS_SCAN_INTERVAL = 5  # seconds (local TCP port 1235)
 
 POLARIS_COOLING_MODES = {
     0: "Riscaldamento",
