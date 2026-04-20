@@ -1,4 +1,7 @@
-"""Sensor platform for Open Pico integration."""
+"""Sensor platform for Open Pico integration.
+
+Supports both Pico device sensors and Polaris zone sensors.
+"""
 import logging
 
 from homeassistant.components.sensor import (
@@ -11,11 +14,12 @@ from homeassistant.const import (
     UnitOfTemperature,
     CONCENTRATION_PARTS_PER_MILLION,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import DOMAIN, POLARIS_COOLING_MODES
 from .base import BaseEntity
 from .coordinator import MainCoordinator
 
@@ -30,11 +34,10 @@ async def async_setup_platform(
 ):
     """Set up the Sensor platform from YAML."""
 
-    # Get all coordinators from hass.data
-    coordinators = hass.data[DOMAIN]["coordinators"]
-
-    # Create sensor entities for each coordinator/device
     sensors = []
+
+    # ─── Pico sensors ─────────────────────────────────────────────
+    coordinators = hass.data[DOMAIN].get("coordinators", [])
     for idx, coordinator in enumerate(coordinators):
         sensors.extend([
             PicoTemperatureSensor(coordinator, idx),
@@ -43,6 +46,18 @@ async def async_setup_platform(
             PicoTVOCSensor(coordinator, idx),
             PicoECO2Sensor(coordinator, idx),
         ])
+
+    # ─── Polaris sensors (per-zone temp/humidity + device mode) ───
+    from .polaris_coordinator import PolarisCoordinator
+    polaris_coordinators = hass.data[DOMAIN].get("polaris_coordinators", [])
+    for coordinator in polaris_coordinators:
+        if coordinator.data and coordinator.data.zones:
+            for zone in coordinator.data.zones:
+                sensors.append(PolarisZoneTemperatureSensor(coordinator, zone.zone_id))
+                if zone.humidity is not None:
+                    sensors.append(PolarisZoneHumiditySensor(coordinator, zone.zone_id))
+        # Device-level operating mode sensor
+        sensors.append(PolarisOperatingModeSensor(coordinator))
 
     async_add_entities(sensors)
 
@@ -217,3 +232,159 @@ class PicoECO2Sensor(BaseEntity, SensorEntity):
             return "mdi:alert"
         else:
             return "mdi:alert-octagon"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Polaris sensors
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class PolarisZoneTemperatureSensor(CoordinatorEntity, SensorEntity):
+    """Temperature sensor for a Polaris zone."""
+
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_suggested_display_precision = 1
+    _attr_has_entity_name = True
+
+    def __init__(self, coordinator, zone_id: int):
+        super().__init__(coordinator)
+        self._zone_id = zone_id
+        self._coordinator = coordinator
+        self._attr_unique_id = f"polaris_{coordinator.serial}_zone_{zone_id}_temp"
+
+    @property
+    def _zone(self):
+        if not self.coordinator.data:
+            return None
+        for z in self.coordinator.data.zones:
+            if z.zone_id == self._zone_id:
+                return z
+        return None
+
+    @property
+    def name(self) -> str:
+        zone = self._zone
+        zone_name = zone.name.strip() if zone else f"Zone {self._zone_id}"
+        return f"{zone_name} Temperature"
+
+    @property
+    def native_value(self) -> float | None:
+        zone = self._zone
+        return zone.current_temp if zone else None
+
+    @property
+    def device_info(self):
+        dev = self.coordinator.data.device if self.coordinator.data else None
+        return {
+            "identifiers": {(DOMAIN, f"polaris_{self._coordinator.serial}")},
+            "name": dev.name if dev else f"Polaris {self._coordinator.serial}",
+            "manufacturer": "Tecnosystemi",
+            "model": "Polaris 5",
+        }
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.async_write_ha_state()
+
+
+class PolarisZoneHumiditySensor(CoordinatorEntity, SensorEntity):
+    """Humidity sensor for a Polaris zone."""
+
+    _attr_device_class = SensorDeviceClass.HUMIDITY
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_suggested_display_precision = 0
+    _attr_has_entity_name = True
+
+    def __init__(self, coordinator, zone_id: int):
+        super().__init__(coordinator)
+        self._zone_id = zone_id
+        self._coordinator = coordinator
+        self._attr_unique_id = f"polaris_{coordinator.serial}_zone_{zone_id}_humidity"
+
+    @property
+    def _zone(self):
+        if not self.coordinator.data:
+            return None
+        for z in self.coordinator.data.zones:
+            if z.zone_id == self._zone_id:
+                return z
+        return None
+
+    @property
+    def name(self) -> str:
+        zone = self._zone
+        zone_name = zone.name.strip() if zone else f"Zone {self._zone_id}"
+        return f"{zone_name} Humidity"
+
+    @property
+    def native_value(self) -> float | None:
+        zone = self._zone
+        return zone.humidity if zone else None
+
+    @property
+    def device_info(self):
+        dev = self.coordinator.data.device if self.coordinator.data else None
+        return {
+            "identifiers": {(DOMAIN, f"polaris_{self._coordinator.serial}")},
+            "name": dev.name if dev else f"Polaris {self._coordinator.serial}",
+            "manufacturer": "Tecnosystemi",
+            "model": "Polaris 5",
+        }
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.async_write_ha_state()
+
+
+class PolarisOperatingModeSensor(CoordinatorEntity, SensorEntity):
+    """Sensor showing the Polaris CU operating mode (heating/cooling type)."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:thermostat"
+
+    def __init__(self, coordinator):
+        super().__init__(coordinator)
+        self._coordinator = coordinator
+        self._attr_unique_id = f"polaris_{coordinator.serial}_operating_mode"
+
+    @property
+    def name(self) -> str:
+        return "Operating Mode"
+
+    @property
+    def native_value(self) -> str | None:
+        dev = self.coordinator.data.device if self.coordinator.data else None
+        if not dev:
+            return None
+        return POLARIS_COOLING_MODES.get(dev.operating_mode, "Sconosciuto")
+
+    @property
+    def extra_state_attributes(self):
+        dev = self.coordinator.data.device if self.coordinator.data else None
+        if not dev:
+            return {}
+        return {
+            "operating_mode_id": dev.operating_mode,
+            "is_cooling": dev.is_cooling,
+            "is_off": dev.is_off,
+            "firmware": dev.fw_ver,
+            "serial": dev.serial,
+        }
+
+    @property
+    def device_info(self):
+        dev = self.coordinator.data.device if self.coordinator.data else None
+        return {
+            "identifiers": {(DOMAIN, f"polaris_{self._coordinator.serial}")},
+            "name": dev.name if dev else f"Polaris {self._coordinator.serial}",
+            "manufacturer": "Tecnosystemi",
+            "model": "Polaris 5",
+            "sw_version": dev.fw_ver if dev else None,
+        }
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.async_write_ha_state()
