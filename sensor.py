@@ -51,11 +51,10 @@ async def async_setup_platform(
     from .polaris_coordinator import PolarisCoordinator
     polaris_coordinators = hass.data[DOMAIN].get("polaris_coordinators", [])
     for coordinator in polaris_coordinators:
-        if coordinator.data and coordinator.data.zones:
-            for zone in coordinator.data.zones:
-                sensors.append(PolarisZoneTemperatureSensor(coordinator, zone.zone_id))
-                if zone.humidity is not None:
-                    sensors.append(PolarisZoneHumiditySensor(coordinator, zone.zone_id))
+        zones = coordinator.data.zones if coordinator.data else []
+        for zone in zones:
+            sensors.append(PolarisZoneTemperatureSensor(coordinator, zone.zone_id))
+            sensors.append(PolarisZoneHumiditySensor(coordinator, zone.zone_id))
         # Device-level operating mode sensor
         sensors.append(PolarisOperatingModeSensor(coordinator))
 
