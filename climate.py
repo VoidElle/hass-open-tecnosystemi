@@ -58,16 +58,31 @@ async def async_setup_platform(
         return
 
     polaris_coordinators: list[PolarisCoordinator] = hass.data[DOMAIN].get("polaris_coordinators", [])
+    verbose = hass.data[DOMAIN].get("config", {}).get("verbose", False)
 
     entities: list[PolarisZoneClimate] = []
 
     for coordinator in polaris_coordinators:
-        for zone in (coordinator.data.zones if coordinator.data else []):
+        zones = coordinator.data.zones if coordinator.data else []
+        if verbose:
+            _LOGGER.debug(
+                "[Polaris][%s] Setting up climate entities: %d zone(s) found",
+                coordinator.device_name, len(zones),
+            )
+        for zone in zones:
             entities.append(PolarisZoneClimate(coordinator, zone.zone_id))
             _LOGGER.debug(
                 "Adding Polaris zone climate: %s (zone_id=%d)",
                 zone.name, zone.zone_id,
             )
+            if verbose:
+                _LOGGER.debug(
+                    "[Polaris][%s] Zone '%s' (id=%d): is_off=%s, set_temp=%s, "
+                    "current_temp=%s, fancoil=%s, serranda=%s",
+                    coordinator.device_name, zone.name, zone.zone_id,
+                    zone.is_off, zone.set_temp, zone.current_temp,
+                    zone.fancoil, zone.serranda,
+                )
 
     if entities:
         async_add_entities(entities)

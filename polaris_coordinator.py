@@ -69,6 +69,32 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
                 len(zones),
             )
 
+            if self.client.verbose:
+                _LOGGER.debug(
+                    "[Polaris][%s] Device state: is_off=%s, is_cooling=%s, "
+                    "operating_mode=%d (%s), t_can=%s, f_inv=%s, f_est=%s, "
+                    "ir_present=%s, num_errors=%s, serial=%s, fw=%s",
+                    self.device_name,
+                    device.is_off, device.is_cooling,
+                    device.operating_mode, device.cooling_mode_name,
+                    device.t_can, device.f_inv, device.f_est,
+                    device.ir_present, device.num_errors,
+                    device.serial, device.fw_ver,
+                )
+                for z in zones:
+                    _LOGGER.debug(
+                        "[Polaris][%s] Zone '%s' (id=%d): is_off=%s, "
+                        "temp=%s, set_temp=%s, humidity=%s, set_humidity=%s, "
+                        "fancoil=%s, fancoil_set=%s, serranda=%s, serranda_set=%s, "
+                        "ev=%s, is_crono=%s, num_error=%s",
+                        self.device_name, z.name, z.zone_id,
+                        z.is_off, z.current_temp, z.set_temp,
+                        z.humidity, z.set_humidity,
+                        z.fancoil, z.fancoil_set,
+                        z.serranda, z.serranda_set,
+                        z.ev, z.is_crono_mode, z.num_error,
+                    )
+
             return PolarisData(device=device, zones=zones)
 
         except PolarisApiError as err:

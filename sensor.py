@@ -49,14 +49,35 @@ async def async_setup_platform(
 
     # ─── Polaris sensors (per-zone temp/humidity + device mode) ───
     from .polaris_coordinator import PolarisCoordinator
+    verbose = hass.data[DOMAIN].get("config", {}).get("verbose", False)
     polaris_coordinators = hass.data[DOMAIN].get("polaris_coordinators", [])
     for coordinator in polaris_coordinators:
         zones = coordinator.data.zones if coordinator.data else []
+        if verbose:
+            _LOGGER.debug(
+                "[Polaris][%s] Setting up sensors: %d zone(s) found",
+                coordinator.device_name, len(zones),
+            )
         for zone in zones:
+            if verbose:
+                _LOGGER.debug(
+                    "[Polaris][%s] Adding temp+humidity sensors for zone '%s' (id=%d, "
+                    "current_temp=%s, humidity=%s)",
+                    coordinator.device_name, zone.name, zone.zone_id,
+                    zone.current_temp, zone.humidity,
+                )
             sensors.append(PolarisZoneTemperatureSensor(coordinator, zone.zone_id))
             sensors.append(PolarisZoneHumiditySensor(coordinator, zone.zone_id))
         # Device-level operating mode sensor
         sensors.append(PolarisOperatingModeSensor(coordinator))
+        if verbose:
+            _LOGGER.debug(
+                "[Polaris][%s] Adding operating mode sensor (current mode=%s, is_off=%s, is_cooling=%s)",
+                coordinator.device_name,
+                coordinator.data.device.cooling_mode_name if coordinator.data else "unknown",
+                coordinator.data.device.is_off if coordinator.data else "unknown",
+                coordinator.data.device.is_cooling if coordinator.data else "unknown",
+            )
 
     async_add_entities(sensors)
 
