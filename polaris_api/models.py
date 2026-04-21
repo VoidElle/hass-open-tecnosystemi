@@ -100,8 +100,8 @@ class PolarisZone:
         return cls(
             zone_id=_parse_int(data.get("id_zona", data.get("nr", data.get("ZoneId", 0)))),
             name=str(data.get("name", data.get("n", data.get("Name", "Unknown")))),
-            # local: "t" (JSON_OFFLINE_COMMAND_TEMP), cloud: "Temp"
-            current_temp=_parse_temp(data.get("t", data.get("Temp"))),
+            # local full: "t" (JSON_OFFLINE_COMMAND_TEMP), ridotto: "co", cloud: "Temp"
+            current_temp=_parse_temp(data.get("t", data.get("co", data.get("Temp")))),
             # local: "t_set" (JSON_OFFLINE_COMMAND_TEMPSET), cloud: "SetTemp"
             set_temp=_parse_temp(data.get("t_set", data.get("ts", data.get("SetTemp")))),
             is_off=_parse_bool(data.get("is_off", data.get("off", data.get("IsOFF")))),
@@ -175,18 +175,20 @@ class PolarisDevice:
 
     @classmethod
     def from_local(cls, data: dict[str, Any]) -> PolarisDevice:
-        """Parse device from local TCP stato_sync response.
+        """Parse device from local TCP stato_r / stato response.
 
-        Local format uses snake_case fields:
-        is_off, is_cool, cool_mod, f_inv, f_est, serial, name, fw_ver, etc.
+        Local full format (stato): is_off, is_cool, cool_mod, f_inv, f_est, ...
+        Local ridotto format (stato_r): off, cl, cl_m, fi, fe, ir, tc, ...
         """
-        is_off = _parse_bool(data.get("is_off", data.get("IsOFF", False)))
-        is_cooling = _parse_bool(data.get("is_cool", data.get("IsCooling", False)))
+        # ridotto: "off", full: "is_off", cloud: "IsOFF"
+        is_off = _parse_bool(data.get("is_off", data.get("off", data.get("IsOFF", False))))
+        # ridotto: "cl", full: "is_cool", cloud: "IsCooling"
+        is_cooling = _parse_bool(data.get("is_cool", data.get("cl", data.get("IsCooling", False))))
 
-        # Operating mode: cool_mod in local, OperatingModeCooling in cloud
+        # Operating mode: ridotto: "cl_m", full: "cool_mod", cloud: "OperatingModeCooling"
         if is_cooling:
             op_mode = _parse_int(
-                data.get("cool_mod", data.get("OperatingModeCooling", 0))
+                data.get("cool_mod", data.get("cl_m", data.get("OperatingModeCooling", 0)))
             )
         else:
             op_mode = 0
@@ -200,13 +202,16 @@ class PolarisDevice:
             is_cooling=is_cooling,
             operating_mode=op_mode,
             # t_can transmitted as integer * 10; divide by 10 to restore °C.
-            # local: "t_can", cloud: "TempCan" (JSON_CU_TCAN)
+            # ridotto: "tc", full: "t_can", cloud: "TempCan"
             t_can=_parse_int(
                 data.get("t_can", data.get("tc", data.get("TempCan", 0)))
             ) // 10,
-            f_inv=_parse_int(data.get("f_inv", data.get("FInv", 0))),
-            f_est=_parse_int(data.get("f_est", data.get("FEst", 0))),
-            ir_present=_parse_int(data.get("ir_present", data.get("IrPresent", 0))),
+            # ridotto: "fi", full: "f_inv"
+            f_inv=_parse_int(data.get("f_inv", data.get("fi", data.get("FInv", 0)))),
+            # ridotto: "fe", full: "f_est"
+            f_est=_parse_int(data.get("f_est", data.get("fe", data.get("FEst", 0)))),
+            # ridotto: "ir", full: "ir_present"
+            ir_present=_parse_int(data.get("ir_present", data.get("ir", data.get("IrPresent", 0)))),
             # local: "err_cu" (JSON_OFFLINE_COMMAND_ERRCU), cloud: "NumErrors"
             num_errors=_parse_int(data.get("err_cu", data.get("NumErrors", data.get("num_errors", 0)))),
         )

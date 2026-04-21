@@ -114,15 +114,24 @@ class PolarisLocalClient:
     # ─── Public API: Read ───────────────────────────────────────────
 
     async def get_status(self) -> dict[str, Any]:
-        """Send stato_sync and return the raw response dict.
+        """Fetch device status via local TCP.
 
-        No pre-connection required — each TCP call is stateless.
+        Mirrors BaseActivity.inizializeGetState(true) / offlineResCURistretto():
+        1. Try CMD_STATO_R ("stato_r") — compact/ridotto format used for local polling.
+        2. If the device returns res=4 (CMD_NOT_FOUND), fall back to CMD_STATO ("stato").
+
+        "stato_sync" is a cloud/HTTP command and must NOT be sent over TCP.
         """
-        cmd = {
-            "c": "stato_sync",
-            "pin": self.pin,
-        }
+        cmd = {"c": "stato_r", "pin": self.pin}
         response = await self._send_command_with_retry(cmd)
+
+        # res=4 → CMD_NOT_FOUND: device doesn't support stato_r, try full stato
+        if response is not None and response.get("res") == 4:
+            if self.verbose:
+                _LOGGER.debug("[%s] stato_r not supported (res=4), falling back to stato", self.device_id)
+            cmd = {"c": "stato", "pin": self.pin}
+            response = await self._send_command_with_retry(cmd)
+
         if response is None:
             raise TimeoutError(f"No response from Polaris device at {self.ip}:{self.port}")
         return response
