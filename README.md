@@ -12,9 +12,9 @@ Hassio Open Pico is a Home Assistant integration that enables management of Tecn
 
 **Supported device families:**
 - **Pico** — Local UDP-based ventilation and air quality units
-- **Polaris 5** — Local UDP-based HVAC zone controllers
+- **Polaris 5X** — Local TCP-based HVAC zone controllers
 
-Both device families communicate over the **same local UDP protocol** (ports 40069/40070), requiring no cloud connectivity.
+Both device families communicate **entirely over your local network**, requiring no cloud connectivity.
 
 This integration took inspiration from:
 - The official [Tecnosystemi](https://play.google.com/store/apps/details?id=it.tecnosystemi.TS&hl=it) mobile application
@@ -74,7 +74,7 @@ open_pico:
   # Optional: Enable verbose logging (default: false)
   verbose: false
 
-  # Pico devices (local UDP)
+  # Pico devices (local UDP, port 40069)
   devices:
     - ip: "192.168.8.133"
       pin: "1234"
@@ -93,13 +93,13 @@ open_pico:
 
 ### Polaris 5 devices (local)
 
-Polaris 5 devices communicate via the same local UDP protocol as Pico devices. You need the device's local IP address and PIN code.
+Polaris 5 devices communicate via **local TCP on port 1235** — the same protocol used by the official Tecnosystemi app. You need the device's local IP address and PIN code.
 
 > **How to find the IP and PIN:** Connect to the Polaris device's WiFi access point (SSID starts with `POLARIS_`), or find its IP in your router's DHCP table. The PIN is the same one you use in the official Tecnosystemi app when selecting a device.
 
 ```yaml
 open_pico:
-  # Polaris 5 devices (local UDP)
+  # Polaris 5 devices (local TCP, port 1235)
   polaris_devices:
     - ip: "192.168.8.200"
       pin: "0000"
@@ -143,26 +143,26 @@ open_pico:
 - 📊 **Real-time Monitoring**: Temperature, humidity, CO2, TVOC sensors
 - 🎛️ **Full Control**: Operating modes, fan speed, night mode, LED control
 
-### Polaris 5
-- 🌐 **Local UDP Communication**: Direct device control, no cloud or internet required
-- 🌡️ **Climate Entities**: Per-zone temperature control (10-30°C, 0.5° step)
+### Polaris 5X
+- 🌐 **Local TCP Communication**: Direct device control on port 1235, no cloud or internet required
+- 🌡️ **Climate Entities**: Per-zone temperature control
 - ❄️ **HVAC Modes**: Heating, Cooling (Raffrescamento, Deumidificazione, Ventilazione)
-- 📊 **Zone Sensors**: Temperature, humidity, and operating mode per zone
+- 💧 **Zone Sensors**: Temperature and humidity per zone
+- 📊 **Operating Mode**: Global CU operating mode sensor
 
 ### General
 - 🔄 **Multi-Device Support**: Control multiple devices of both types simultaneously
 - 🏷️ **Device Organization**: Use Home Assistant areas for logical grouping
-- ⚡ **Concurrent Polling**: Efficient updates across all devices
-- 🔌 **Shared UDP Transport**: All devices share a single UDP socket, no port conflicts
+- ⚡ **Concurrent Polling**: Efficient updates across all devices (5 second interval)
 
 ## Limitations ⚠️
-- Both Pico and Polaris require local network access (devices must be on same network as Home Assistant)
+- Both Pico and Polaris require local network access (devices must be on the same network as Home Assistant)
 - Configuration via YAML only (no UI configuration flow yet)
 
 ## Tested On 🧪
 - PICO PRO PLUS 30 **(ACD100052)**
 - PICO PRO PLUS 60 **(ACD100054)**
-- **Polaris 5** (via local UDP)
+- Polaris 5X
 
 *Most features should work on all Pico and Polaris models*
 
@@ -181,14 +181,3 @@ Contributions are welcome!
 2. Create a feature branch: `git checkout -b feature/name`
 3. Follow [Home Assistant dev guidelines](https://developers.home-assistant.io/)
 4. Submit a PR with clear description
-
-
-## Work in progress 🚧
-- [X] Include the device sensors as entities
-- [X] Polaris 5 local UDP support
-- [X] Polaris climate entities (heat/cool/off per zone)
-- [X] Polaris cooling sub-modes (Raffrescamento, Deumidificazione, Ventilazione)
-- [ ] Polaris auto-discovery via network scan
-- [ ] Include the possibility to show devices' errors (Waiting for maintenance flag to be triggered on my devices)
-- [ ] Include the possibility to reset the maintenance flag when maintenance is performed (Waiting for maintenance flag to be triggered on my devices)
-- [ ] UI configuration flow (alternative to YAML)
