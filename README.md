@@ -26,7 +26,7 @@ This integration took inspiration from:
 
 ### Via HACS (Manual)
 1. Add custom repository:
-   - Open HACS in your Home Assistant interface
+    - Open HACS in your Home Assistant interface
     - Go to "Integrations" tab
     - Click on the three dots in the top right corner and select "Custom repositories"
     - Enter the repository URL: `https://github.com/VoidElle/hassio-open-pico`
@@ -85,11 +85,11 @@ open_pico:
       name: "Bedroom"
 ```
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `ip` | Yes | Local IP address of the Pico device |
-| `pin` | Yes | Device PIN code |
-| `name` | No | Friendly name for the device |
+| Parameter | Required | Description                         |
+|-----------|----------|-------------------------------------|
+| `ip`      | Yes      | Local IP address of the Pico device |
+| `pin`     | Yes      | Device PIN code                     |
+| `name`    | No       | Friendly name for the device        |
 
 ### Polaris 5 devices (local)
 
@@ -104,13 +104,20 @@ open_pico:
     - ip: "192.168.8.200"
       pin: "0000"
       name: "Polaris Living Room"
+      # Optional: polling interval in seconds (default: 30, minimum: 10)
+      # The Polaris CU has a limited TCP stack. Polling too frequently
+      # can disrupt the device's persistent cloud connection, causing
+      # the official Tecnosystemi app to show "Stato sistema non sincronizzato".
+      # Increase this value if you experience that issue.
+      scan_interval: 30
 ```
 
-| Parameter | Required | Description |
-|-----------|----------|-------------|
-| `ip` | Yes | Local IP address of the Polaris CU device |
-| `pin` | Yes | Device PIN code (the one you enter when selecting a device in the app) |
-| `name` | No | Friendly name (defaults to the name configured in the device) |
+| Parameter       | Required | Description                                                                                                                                      |
+|-----------------|----------|--------------------------------------------------------------------------------------------------------------------------------------------------|
+| `ip`            | Yes      | Local IP address of the Polaris CU device                                                                                                        |
+| `pin`           | Yes      | Device PIN code (the one you enter when selecting a device in the app)                                                                           |
+| `name`          | No       | Friendly name (defaults to the name configured in the device)                                                                                    |
+| `scan_interval` | No       | Polling interval in seconds (default: `30`, minimum: `10`). Lower values give faster HA updates but may interrupt the official app's cloud sync. |
 
 ### Mixed configuration (Pico + Polaris)
 
@@ -129,9 +136,8 @@ open_pico:
     - ip: "192.168.8.200"
       pin: "0000"
       name: "Polaris Living Room"
+      scan_interval: 30
 ```
-
-**After configuration:**
 1. Save your `configuration.yaml`
 2. Check configuration validity: Developer Tools > YAML > Check Configuration
 3. Restart Home Assistant

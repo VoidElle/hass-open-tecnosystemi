@@ -15,9 +15,10 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-# Local TCP polling (port 1235)
-POLARIS_SCAN_INTERVAL = 5
-
+# Local TCP polling (port 1235).
+# 30 seconds avoids overwhelming the CU's limited TCP stack,
+# which would block the official app's cloud sync.
+POLARIS_SCAN_INTERVAL = 30
 
 @dataclass
 class PolarisData:
@@ -35,6 +36,7 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
         hass: HomeAssistant,
         client: PolarisLocalClient,
         device_name: str,
+        scan_interval: int = POLARIS_SCAN_INTERVAL,
     ) -> None:
         """Initialize."""
         self.client = client
@@ -46,7 +48,7 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
             _LOGGER,
             name=f"{DOMAIN} Polaris ({device_name})",
             update_method=self._async_update_data,
-            update_interval=timedelta(seconds=POLARIS_SCAN_INTERVAL),
+            update_interval=timedelta(seconds=scan_interval),
         )
 
     @property

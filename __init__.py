@@ -49,6 +49,11 @@ POLARIS_DEVICE_SCHEMA = vol.Schema({
     vol.Required("ip"): cv.string,
     vol.Required("pin"): cv.string,
     vol.Optional("name"): cv.string,
+    # scan_interval: how often (seconds) to poll the device.
+    # Lower values give faster updates but may disrupt the device's
+    # persistent cloud connection (causing the official app to show
+    # "Stato sistema non sincronizzato"). Default: 30s is a safe balance.
+    vol.Optional("scan_interval", default=30): vol.All(int, vol.Range(min=10)),
 })
 
 # Define the YAML configuration schema
@@ -213,6 +218,7 @@ async def _setup_polaris_devices(
         polaris_ip = device_config.get("ip")
         pin = device_config.get("pin")
         device_name = device_config.get("name", f"Polaris Device {idx + 1}")
+        scan_interval = device_config.get("scan_interval", 30)
 
         _LOGGER.debug("Setting up Polaris device '%s': ip=%s", device_name, polaris_ip)
 
@@ -254,7 +260,7 @@ async def _setup_polaris_devices(
             if device.name and device.name != "Unknown" and "name" not in device_config:
                 device_name = device.name
 
-            coordinator = PolarisCoordinator(hass, client, device_name)
+            coordinator = PolarisCoordinator(hass, client, device_name, scan_interval=scan_interval)
 
             # Initial refresh through the coordinator
             try:

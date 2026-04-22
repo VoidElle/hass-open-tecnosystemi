@@ -34,11 +34,11 @@ class PolarisLocalClient:
         device_id: str | None = None,
         port: int = 1235,
         timeout: float = 5.0,
-        retry_attempts: int = 3,
+        retry_attempts: int = 2,
         retry_delay: float = 1.0,
         verbose: bool = False,
     ) -> None:
-        """Initialise the Polaris local client.
+        """Initialize the Polaris local client.
 
         Args:
             ip: IP address of the Polaris CU device.
