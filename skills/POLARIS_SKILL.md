@@ -1,6 +1,6 @@
 ---
 # Agent skill — install locally with:
-#   npx skills add ./POLARIS_SKILL.md
+#   npx skills add ./skills/POLARIS_SKILL.md
 # or from GitHub after pushing:
 #   npx skills add <owner>/<repo>
 name: polaris-memory
@@ -239,24 +239,31 @@ All methods call `async_request_refresh()` after sending command.
 
 **`PolarisMainClimate`** — one per CU
 - `unique_id`: `polaris_<serial>_main`
-- Features: `TURN_ON`, `TURN_OFF`, `PRESET_MODE`
-- HVAC modes: `OFF`, `HEAT`, `COOL` → all call `upd_cu`
-- Presets: `Raffrescamento`, `Deumidificazione`, `Ventilazione` → `upd_cu cool_mod`
+- Features: `TURN_ON`, `TURN_OFF`
+- HVAC modes — all map directly to `upd_cu`, no presets:
+  | HA mode | `is_cool` | `cool_mod` | Device name |
+  |---------|-----------|------------|-------------|
+  | `OFF` | — | — | Machine off (`is_off=1`) |
+  | `HEAT` | `0` | `0` | Riscaldamento |
+  | `COOL` | `1` | `1` | Raffrescamento |
+  | `DRY` | `1` | `2` | Deumidificazione |
+  | `FAN_ONLY` | `1` | `3` | Ventilazione |
 - `current_temperature`: canal temp (`dev.t_can`)
-- No target temp (canal setpoint not user-facing in HA)
+- No target temp, no presets
 
 **`PolarisZoneClimate`** — one per zone
 - `unique_id`: `polaris_<serial>_zone_<id>`
 - Features: `TARGET_TEMPERATURE`, `TURN_ON`, `TURN_OFF`
-- HVAC mode `OFF` → `upd_zona is_off=1` (zone only, other zones unaffected)
-- HVAC mode `HEAT`/`COOL` → `upd_zona is_off=0` (zone on; mode set via main entity)
+- HVAC modes: `OFF`, `FAN_ONLY` only
+  - `FAN_ONLY` = zone active (machine mode drives actual heat/cool/vent)
+  - `OFF` = zone off (`upd_zona is_off=1`) — other zones unaffected
 - `async_turn_on/off` → `coordinator.async_turn_zone_on/off(zone_id)` → `upd_zona`
+- `async_set_temperature` → `coordinator.async_set_zone_temp(zone_id, temp)` → `upd_zona t_set`
 - `current_temperature` / `target_temperature` / `current_humidity` from zone data
-- `hvac_mode` reflects CU mode but is read from `dev`; shows `OFF` if machine OR zone is off
 
 ### Key design decisions
 - Zone on/off is **independent** — `upd_zona is_off` per zone, confirmed in `ZoneActivity.saveData()` and `Zona.update_ZONA_Command()`
-- Machine on/off via main entity only → no confusion from zone entities shutting down whole machine
+- Machine on/off + mode via main entity only — zone entities cannot change machine mode
 - All entities share same `device_info` identifiers → grouped under one HA device
 
 ### Key fix applied (2026-04-28)
