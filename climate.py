@@ -222,9 +222,9 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
         | ClimateEntityFeature.TURN_ON
         | ClimateEntityFeature.TURN_OFF
     )
-    # OFF = zone off, FAN_ONLY = zone active (machine decides heat/cool/vent).
+    # OFF = zone off, AUTO = zone active (machine decides heat/cool/vent).
     # Zone entities cannot change machine mode — use PolarisMainClimate for that.
-    _attr_hvac_modes = [HVACMode.OFF, HVACMode.FAN_ONLY]
+    _attr_hvac_modes = [HVACMode.OFF, HVACMode.AUTO]
 
     def __init__(self, coordinator: PolarisCoordinator, zone_id: int) -> None:
         super().__init__(coordinator)
@@ -282,14 +282,14 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
 
     @property
     def hvac_mode(self) -> HVACMode:
-        """OFF if zone or machine is off. FAN_ONLY (= zone active) otherwise."""
+        """OFF if zone or machine is off. AUTO (= zone active) otherwise."""
         zone = self._zone
         if not zone or zone.is_off:
             return HVACMode.OFF
         dev = self._device
         if dev and dev.is_off:
             return HVACMode.OFF
-        return HVACMode.FAN_ONLY
+        return HVACMode.AUTO
 
     @property
     def hvac_action(self) -> HVACAction | None:
@@ -297,10 +297,10 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
         dev = self._device
         if not zone or zone.is_off or (dev and dev.is_off):
             return HVACAction.OFF
-        return HVACAction.FAN
+        return HVACAction.IDLE
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
-        """OFF = turn zone off (upd_zona). FAN_ONLY = turn zone on (upd_zona)."""
+        """OFF = turn zone off (upd_zona). AUTO = turn zone on (upd_zona)."""
         if hvac_mode == HVACMode.OFF:
             await self._coordinator.async_turn_zone_off(self._zone_id)
         else:
