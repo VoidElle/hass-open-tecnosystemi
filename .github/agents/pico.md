@@ -1,3 +1,8 @@
+---
+name: pico
+description: Expert agent for the Pico ventilation/air quality device integration. Use when working on the UDP protocol, PicoClientManager, SharedTransportManager, MainCoordinator, or any Pico entities (fan, sensor, switch, select, button, binary_sensor).
+---
+
 # Hassio Open Pico — Pico Device Integration
 
 Home Assistant custom integration for Tecnosystemi **Pico** ventilation/air quality devices.  

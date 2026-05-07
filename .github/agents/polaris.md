@@ -1,3 +1,8 @@
+---
+name: polaris
+description: Expert agent for the Polaris HVAC integration. Use when working on Polaris TCP protocol, PolarisCoordinator, PolarisLocalClient, climate entities, or anything in polaris_api/ or polaris_coordinator.py.
+---
+
 # Polaris Integration — Agent Memory
 
 Root of this repository. Install as HA custom integration at `custom_components/hassio_open_pico/`.
