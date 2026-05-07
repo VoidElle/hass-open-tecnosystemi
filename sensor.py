@@ -362,6 +362,7 @@ class PolarisZoneHumiditySensor(CoordinatorEntity, SensorEntity):
 class PolarisOperatingModeSensor(CoordinatorEntity, SensorEntity):
     """Sensor showing the Polaris CU operating mode (heating/cooling type)."""
 
+    _attr_translation_key = "polaris_operating_mode"
     _attr_has_entity_name = True
     _attr_icon = "mdi:thermostat"
 
@@ -371,15 +372,11 @@ class PolarisOperatingModeSensor(CoordinatorEntity, SensorEntity):
         self._attr_unique_id = f"polaris_{coordinator.serial}_operating_mode"
 
     @property
-    def name(self) -> str:
-        return "Operating Mode"
-
-    @property
     def native_value(self) -> str | None:
         dev = self.coordinator.data.device if self.coordinator.data else None
         if not dev:
             return None
-        return POLARIS_COOLING_MODES.get(dev.operating_mode, "Sconosciuto")
+        return POLARIS_COOLING_MODES.get(dev.operating_mode, "unknown")
 
     @property
     def extra_state_attributes(self):

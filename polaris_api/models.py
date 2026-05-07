@@ -167,11 +167,11 @@ class PolarisDevice:
     def cooling_mode_name(self) -> str:
         """Human-readable cooling mode name."""
         return {
-            0: "Riscaldamento",
-            1: "Raffrescamento",
-            2: "Deumidificazione",
-            3: "Ventilazione",
-        }.get(self.operating_mode, "Sconosciuto")
+            0: "Heating",
+            1: "Cooling",
+            2: "Dehumidification",
+            3: "Ventilation",
+        }.get(self.operating_mode, "Unknown")
 
     @classmethod
     def from_local(cls, data: dict[str, Any]) -> PolarisDevice:

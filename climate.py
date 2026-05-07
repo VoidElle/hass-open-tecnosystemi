@@ -108,6 +108,7 @@ class PolarisMainClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
     """
 
     _attr_has_entity_name = True
+    _attr_name = None
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_supported_features = (
         ClimateEntityFeature.TURN_ON
@@ -125,11 +126,6 @@ class PolarisMainClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
         super().__init__(coordinator)
         self._coordinator = coordinator
         self._attr_unique_id = f"polaris_{coordinator.serial}_main"
-
-    @property
-    def name(self) -> str:
-        dev = self._device
-        return dev.name if dev and dev.name != "Unknown" else self._coordinator.device_name
 
     @property
     def _device(self):

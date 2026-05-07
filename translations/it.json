@@ -43,6 +43,18 @@
           "natural_ventilation": "Ventilazione Naturale"
         }
       }
+    },
+    "sensor": {
+      "polaris_operating_mode": {
+        "name": "Modalità Operativa",
+        "state": {
+          "heating": "Riscaldamento",
+          "cooling": "Raffrescamento",
+          "dehumidification": "Deumidificazione",
+          "ventilation": "Ventilazione",
+          "unknown": "Sconosciuto"
+        }
+      }
     }
   }
 }
