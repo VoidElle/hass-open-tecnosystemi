@@ -59,9 +59,6 @@
     "binary_sensor": {
       "polaris_device_error": {
         "name": "Device Error"
-      },
-      "polaris_zone_error": {
-        "name": "Zone Error"
       }
     }
   }

@@ -5,7 +5,7 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
     BinarySensorDeviceClass,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -106,11 +106,24 @@ class PolarisDeviceErrorBinarySensor(CoordinatorEntity, BinarySensorEntity):
             return {}
         return {"active_errors": self._coordinator.data.device.active_errors}
 
+    @property
+    def device_info(self):
+        dev = self._coordinator.data.device if self._coordinator.data else None
+        return {
+            "identifiers": {(DOMAIN, f"polaris_{self._coordinator.serial}")},
+            "name": dev.name if dev else f"Polaris {self._coordinator.serial}",
+            "manufacturer": "Tecnosystemi",
+            "model": "Polaris 5",
+        }
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.async_write_ha_state()
+
 
 class PolarisZoneErrorBinarySensor(CoordinatorEntity, BinarySensorEntity):
     """Binary sensor: a Polaris zone has at least one active error bit."""
 
-    _attr_translation_key = "polaris_zone_error"
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
     _attr_has_entity_name = True
     _attr_icon = "mdi:alert-circle-outline"
@@ -144,3 +157,17 @@ class PolarisZoneErrorBinarySensor(CoordinatorEntity, BinarySensorEntity):
     def extra_state_attributes(self) -> dict:
         z = self._zone
         return {"active_errors": z.active_errors} if z else {}
+
+    @property
+    def device_info(self):
+        dev = self._coordinator.data.device if self._coordinator.data else None
+        return {
+            "identifiers": {(DOMAIN, f"polaris_{self._coordinator.serial}")},
+            "name": dev.name if dev else f"Polaris {self._coordinator.serial}",
+            "manufacturer": "Tecnosystemi",
+            "model": "Polaris 5",
+        }
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        self.async_write_ha_state()
