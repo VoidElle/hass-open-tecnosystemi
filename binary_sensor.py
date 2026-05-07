@@ -8,6 +8,7 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType
+from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .base import BaseEntity
@@ -26,13 +27,21 @@ async def async_setup_platform(
     if discovery_info is None:
         return
 
-    # Get all coordinators from hass.data
-    coordinators = hass.data[DOMAIN]["coordinators"]
-
-    # Create binary sensor entities for each coordinator/device
     sensors = []
+
+    # ─── Pico sensors ─────────────────────────────────────────────
+    coordinators = hass.data[DOMAIN].get("coordinators", [])
     for idx, coordinator in enumerate(coordinators):
         sensors.append(PicoMaintenanceBinarySensor(coordinator, idx))
+
+    # ─── Polaris sensors (device error + per-zone error) ──────────
+    from .polaris_coordinator import PolarisCoordinator
+    polaris_coordinators = hass.data[DOMAIN].get("polaris_coordinators", [])
+    for coordinator in polaris_coordinators:
+        sensors.append(PolarisDeviceErrorBinarySensor(coordinator))
+        zones = coordinator.data.zones if coordinator.data else []
+        for zone in zones:
+            sensors.append(PolarisZoneErrorBinarySensor(coordinator, zone.zone_id))
 
     async_add_entities(sensors)
     _LOGGER.info("Added %d binary sensor(s)", len(sensors))
@@ -65,3 +74,73 @@ class PicoMaintenanceBinarySensor(BaseEntity, BinarySensorEntity):
         if self.is_on:
             return "mdi:air-filter-remove"
         return "mdi:air-filter"
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# Polaris binary sensors
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class PolarisDeviceErrorBinarySensor(CoordinatorEntity, BinarySensorEntity):
+    """Binary sensor: Polaris CU has at least one active error bit."""
+
+    _attr_translation_key = "polaris_device_error"
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:alert-circle"
+
+    def __init__(self, coordinator) -> None:
+        super().__init__(coordinator)
+        self._coordinator = coordinator
+        self._attr_unique_id = f"polaris_{coordinator.serial}_device_error"
+
+    @property
+    def is_on(self) -> bool | None:
+        if not self._coordinator.data:
+            return None
+        return self._coordinator.data.device.has_error
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        if not self._coordinator.data:
+            return {}
+        return {"active_errors": self._coordinator.data.device.active_errors}
+
+
+class PolarisZoneErrorBinarySensor(CoordinatorEntity, BinarySensorEntity):
+    """Binary sensor: a Polaris zone has at least one active error bit."""
+
+    _attr_translation_key = "polaris_zone_error"
+    _attr_device_class = BinarySensorDeviceClass.PROBLEM
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:alert-circle-outline"
+
+    def __init__(self, coordinator, zone_id: int) -> None:
+        super().__init__(coordinator)
+        self._coordinator = coordinator
+        self._zone_id = zone_id
+        self._attr_unique_id = f"polaris_{coordinator.serial}_zone_{zone_id}_error"
+
+    @property
+    def _zone(self):
+        if not self._coordinator.data:
+            return None
+        for z in self._coordinator.data.zones:
+            if z.zone_id == self._zone_id:
+                return z
+        return None
+
+    @property
+    def name(self) -> str | None:
+        z = self._zone
+        return f"{z.name.strip()} Error" if z else None
+
+    @property
+    def is_on(self) -> bool | None:
+        z = self._zone
+        return z.has_error if z is not None else None
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        z = self._zone
+        return {"active_errors": z.active_errors} if z else {}
