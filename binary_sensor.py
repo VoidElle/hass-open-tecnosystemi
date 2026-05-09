@@ -149,6 +149,10 @@ class PolarisZoneErrorBinarySensor(CoordinatorEntity, BinarySensorEntity):
         return f"{z.name.strip()} Error" if z else None
 
     @property
+    def available(self) -> bool:
+        return super().available and self._zone is not None
+
+    @property
     def is_on(self) -> bool | None:
         z = self._zone
         return z.has_error if z is not None else None
