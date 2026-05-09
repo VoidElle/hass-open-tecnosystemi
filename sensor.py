@@ -101,7 +101,7 @@ class PicoTemperatureSensor(BaseEntity, SensorEntity):
     @property
     def native_value(self) -> float | None:
         """Return the state of the sensor."""
-        if not self.coordinator.data or not self.coordinator.data.sensors or not self.coordinator.data.sensors.temperature:
+        if not self.coordinator.data or not self.coordinator.data.sensors or self.coordinator.data.sensors.temperature is None:
             return None
         return self.coordinator.data.sensors.temperature_celsius
 
@@ -125,7 +125,7 @@ class PicoHumiditySensor(BaseEntity, SensorEntity):
     @property
     def native_value(self) -> float | None:
         """Return the state of the sensor."""
-        if not self.coordinator.data or not self.coordinator.data.sensors or not self.coordinator.data.sensors.humidity:
+        if not self.coordinator.data or not self.coordinator.data.sensors or self.coordinator.data.sensors.humidity is None:
             return None
         return self.coordinator.data.sensors.humidity_percent
 
@@ -149,7 +149,7 @@ class PicoAirQualitySensor(BaseEntity, SensorEntity):
     @property
     def native_value(self) -> int | None:
         """Return the state of the sensor."""
-        if not self.coordinator.data or not self.coordinator.data.sensors or not self.coordinator.data.sensors.air_quality:
+        if not self.coordinator.data or not self.coordinator.data.sensors or self.coordinator.data.sensors.air_quality is None:
             return None
         return self.coordinator.data.sensors.air_quality
 
@@ -173,14 +173,14 @@ class PicoTVOCSensor(BaseEntity, SensorEntity):
     @property
     def native_value(self) -> int | None:
         """Return the state of the sensor."""
-        if not self.coordinator.data or not self.coordinator.data.sensors or not self.coordinator.data.sensors.tvoc:
+        if not self.coordinator.data or not self.coordinator.data.sensors or self.coordinator.data.sensors.tvoc is None:
             return None
         return self.coordinator.data.sensors.tvoc
 
     @property
     def icon(self) -> str:
         """Return the icon based on TVOC level."""
-        if not self.coordinator.data or not self.coordinator.data.sensors or not self.coordinator.data.sensors.tvoc:
+        if not self.coordinator.data or not self.coordinator.data.sensors or self.coordinator.data.sensors.tvoc is None:
             return "mdi:chemical-weapon"
 
         tvoc = self.coordinator.data.sensors.tvoc
@@ -223,14 +223,14 @@ class PicoECO2Sensor(BaseEntity, SensorEntity):
     @property
     def native_value(self) -> int | None:
         """Return the state of the sensor."""
-        if not self.coordinator.data or not self.coordinator.data.sensors or not self.coordinator.data.sensors.eco2:
+        if not self.coordinator.data or not self.coordinator.data.sensors or self.coordinator.data.sensors.eco2 is None:
             return None
         return self.coordinator.data.sensors.eco2
 
     @property
     def icon(self) -> str:
         """Return the icon based on eCO2 level."""
-        if not self.coordinator.data or not self.coordinator.data.sensors or not self.coordinator.data.sensors.eco2:
+        if not self.coordinator.data or not self.coordinator.data.sensors or self.coordinator.data.sensors.eco2 is None:
             return "mdi:molecule-co2"
 
         eco2 = self.coordinator.data.sensors.eco2
@@ -284,6 +284,10 @@ class PolarisZoneTemperatureSensor(CoordinatorEntity, SensorEntity):
         return None
 
     @property
+    def available(self) -> bool:
+        return super().available and self._zone is not None
+
+    @property
     def name(self) -> str:
         zone = self._zone
         zone_name = zone.name.strip() if zone else f"Zone {self._zone_id}"
@@ -332,6 +336,10 @@ class PolarisZoneHumiditySensor(CoordinatorEntity, SensorEntity):
             if z.zone_id == self._zone_id:
                 return z
         return None
+
+    @property
+    def available(self) -> bool:
+        return super().available and self._zone is not None
 
     @property
     def name(self) -> str:

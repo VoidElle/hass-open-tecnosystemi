@@ -173,7 +173,7 @@ class PolarisMainClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
     def current_temperature(self) -> float | None:
         """Return canal temperature if available."""
         dev = self._device
-        return float(dev.t_can) if dev and dev.t_can else None
+        return float(dev.t_can) if dev and dev.t_can is not None else None
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         if hvac_mode == HVACMode.OFF:

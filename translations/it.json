@@ -55,6 +55,11 @@
           "unknown": "Sconosciuto"
         }
       }
+    },
+    "binary_sensor": {
+      "polaris_device_error": {
+        "name": "Errore Dispositivo"
+      }
     }
   }
 }

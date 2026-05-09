@@ -180,7 +180,15 @@ class PolarisLocalClient:
          "fan_set":...,"shu_set":...,"is_crono":...,"pin":...}
         """
         effective_is_off = is_off if is_off is not None else zone.is_off
-        effective_temp = set_temp if set_temp is not None else (zone.set_temp or 20.0)
+        if set_temp is not None:
+            effective_temp = set_temp
+        elif zone.set_temp is not None:
+            effective_temp = zone.set_temp
+        else:
+            raise ValueError(
+                f"Cannot update zone {zone.zone_id}: no target temperature known. "
+                "Set a temperature explicitly."
+            )
         effective_crono = is_crono if is_crono is not None else zone.is_crono_mode
         set_temp_int = round(effective_temp * 10)
 

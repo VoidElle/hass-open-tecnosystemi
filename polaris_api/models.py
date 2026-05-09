@@ -7,6 +7,35 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+# Error bitmask definitions from APK R.array.cu_errors / R.array.zone_errors.
+# Index = bit position (LSB = bit 0). Empty strings = undefined/reserved bits.
+_CU_ERROR_MESSAGES: tuple[str, ...] = (
+    "E0 - No Master",
+    "",
+    "",
+    "",
+    "PIN error",
+    "E6 - Server Error",
+    "E7 - Server Error",
+    "Network error – Please check your connection",
+)
+
+_ZONE_ERROR_MESSAGES: tuple[str, ...] = (
+    "E0 - No communication",
+    "E2 - Chrono-Actuator association",
+    "E3 - Actuator failure",
+    "E4 - Actuator communication error",
+    "E5 - Low Battery",
+    "Error: status request",
+    "E7 - Server Error",
+    "Network error – Please check your connection",
+)
+
+
+def _decode_error_bitmask(mask: int, messages: tuple[str, ...]) -> list[str]:
+    """Decode LSB-first bitmask → list of active error strings (empty bits skipped)."""
+    return [msg for i, msg in enumerate(messages) if (mask >> i) & 1 and msg]
+
 
 def _parse_temp(value: Any) -> float | None:
     """Parse temperature from API/local response.
@@ -86,7 +115,12 @@ class PolarisZone:
 
     @property
     def has_error(self) -> bool:
-        return self.num_error > 0
+        return self.num_error != 0
+
+    @property
+    def active_errors(self) -> list[str]:
+        """Decode zone error bitmask → list of active error messages."""
+        return _decode_error_bitmask(self.num_error, _ZONE_ERROR_MESSAGES)
 
     @classmethod
     def from_local(cls, data: dict[str, Any]) -> PolarisZone:
@@ -162,6 +196,15 @@ class PolarisDevice:
     @property
     def is_on(self) -> bool:
         return not self.is_off
+
+    @property
+    def has_error(self) -> bool:
+        return self.num_errors != 0
+
+    @property
+    def active_errors(self) -> list[str]:
+        """Decode CU error bitmask → list of active error messages."""
+        return _decode_error_bitmask(self.num_errors, _CU_ERROR_MESSAGES)
 
     @property
     def cooling_mode_name(self) -> str:

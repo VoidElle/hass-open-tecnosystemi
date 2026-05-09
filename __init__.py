@@ -35,6 +35,7 @@ PICO_PLATFORMS: list[Platform] = [
 POLARIS_PLATFORMS: list[Platform] = [
     Platform.CLIMATE,
     Platform.SENSOR,
+    Platform.BINARY_SENSOR,
 ]
 
 # Define the Pico device schema (local UDP)
