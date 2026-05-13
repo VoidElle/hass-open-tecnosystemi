@@ -52,8 +52,8 @@ class PicoFan(BaseEntity, FanEntity):
         """Initialize the fan."""
         super().__init__(coordinator, device_index)
 
-        # Set unique_id based on IP address
-        self._attr_unique_id = f"{DOMAIN}_fan_{coordinator.pico_ip.replace('.', '_')}"
+        # Set unique_id based on stable user-configured family name
+        self._attr_unique_id = f"{DOMAIN}_fan_{coordinator.family_name}"
         self._attr_name = "Fan"
 
     @property

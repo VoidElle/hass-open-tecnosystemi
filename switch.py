@@ -46,7 +46,7 @@ class PicoNightModeSwitch(BaseEntity, SwitchEntity):
         """Initialize the switch."""
         super().__init__(coordinator, device_index)
 
-        self._attr_unique_id = f"{DOMAIN}_night_mode_{coordinator.pico_ip.replace('.', '_')}"
+        self._attr_unique_id = f"{DOMAIN}_night_mode_{coordinator.family_name}"
         self._attr_name = "Night Mode"
 
     @property
@@ -101,7 +101,7 @@ class PicoLEDStatusSwitch(BaseEntity, SwitchEntity):
         """Initialize the switch."""
         super().__init__(coordinator, device_index)
 
-        self._attr_unique_id = f"{DOMAIN}_led_status_{coordinator.pico_ip.replace('.', '_')}"
+        self._attr_unique_id = f"{DOMAIN}_led_status_{coordinator.family_name}"
         self._attr_name = "LED Status"
 
     @property

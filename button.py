@@ -49,7 +49,7 @@ class PicoMaintenanceResetButton(BaseEntity, ButtonEntity):
         """Initialize the button."""
         super().__init__(coordinator, device_index)
 
-        self._attr_unique_id = f"{DOMAIN}_reset_maintenance_{coordinator.pico_ip.replace('.', '_')}"
+        self._attr_unique_id = f"{DOMAIN}_reset_maintenance_{coordinator.family_name}"
         self._attr_name = "Reset Filter Maintenance Button"
 
     @property

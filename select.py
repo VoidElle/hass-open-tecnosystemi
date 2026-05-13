@@ -50,8 +50,8 @@ class PicoTargetHumiditySelect(BaseEntity, SelectEntity):
         """Initialize the select."""
         super().__init__(coordinator, device_index)
 
-        # Set unique_id based on IP address
-        self._attr_unique_id = f"{DOMAIN}_target_humidity_{coordinator.pico_ip.replace('.', '_')}"
+        # Set unique_id based on stable user-configured family name
+        self._attr_unique_id = f"{DOMAIN}_target_humidity_{coordinator.family_name}"
         self._attr_name = "Target Humidity"
 
     @property
@@ -115,8 +115,8 @@ class PicoPresetModeSelect(BaseEntity, SelectEntity):
         """Initialize the select."""
         super().__init__(coordinator, device_index)
 
-        # Set unique_id based on IP address
-        self._attr_unique_id = f"{DOMAIN}_preset_mode_{coordinator.pico_ip.replace('.', '_')}"
+        # Set unique_id based on stable user-configured family name
+        self._attr_unique_id = f"{DOMAIN}_preset_mode_{coordinator.family_name}"
         self._attr_name = "Preset Mode"
 
     @property

@@ -33,16 +33,16 @@ class BaseEntity(CoordinatorEntity):
         """Return device information."""
         if not self.coordinator.data:
             return DeviceInfo(
-                identifiers={(DOMAIN, self.coordinator.pico_ip)},
-                name=f"Pico {self.coordinator.pico_ip}",
+                identifiers={(DOMAIN, self.coordinator.family_name)},
+                name=self.coordinator.device_name,
                 manufacturer="Tecnosystemi",
             )
 
         device_info = self.coordinator.data.device_info
 
         return DeviceInfo(
-            identifiers={(DOMAIN, self.coordinator.pico_ip)},
-            name=device_info.name or f"Pico {self.coordinator.pico_ip}",
+            identifiers={(DOMAIN, self.coordinator.family_name)},
+            name=device_info.name or self.coordinator.device_name,
             manufacturer="Tecnosystemi",
             model=f"Model {device_info.model}",
             sw_version=device_info.firmware_version,

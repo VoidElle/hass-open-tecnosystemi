@@ -95,7 +95,7 @@ class PicoTemperatureSensor(BaseEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator, device_index)
 
-        self._attr_unique_id = f"{DOMAIN}_temperature_{coordinator.pico_ip.replace('.', '_')}"
+        self._attr_unique_id = f"{DOMAIN}_temperature_{coordinator.family_name}"
         self._attr_name = "Temperature"
 
     @property
@@ -119,7 +119,7 @@ class PicoHumiditySensor(BaseEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator, device_index)
 
-        self._attr_unique_id = f"{DOMAIN}_humidity_{coordinator.pico_ip.replace('.', '_')}"
+        self._attr_unique_id = f"{DOMAIN}_humidity_{coordinator.family_name}"
         self._attr_name = "Humidity"
 
     @property
@@ -143,7 +143,7 @@ class PicoAirQualitySensor(BaseEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator, device_index)
 
-        self._attr_unique_id = f"{DOMAIN}_air_quality_{coordinator.pico_ip.replace('.', '_')}"
+        self._attr_unique_id = f"{DOMAIN}_air_quality_{coordinator.family_name}"
         self._attr_name = "CO2"
 
     @property
@@ -167,7 +167,7 @@ class PicoTVOCSensor(BaseEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator, device_index)
 
-        self._attr_unique_id = f"{DOMAIN}_tvoc_{coordinator.pico_ip.replace('.', '_')}"
+        self._attr_unique_id = f"{DOMAIN}_tvoc_{coordinator.family_name}"
         self._attr_name = "TVOC"
 
     @property
@@ -217,7 +217,7 @@ class PicoECO2Sensor(BaseEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator, device_index)
 
-        self._attr_unique_id = f"{DOMAIN}_eco2_{coordinator.pico_ip.replace('.', '_')}"
+        self._attr_unique_id = f"{DOMAIN}_eco2_{coordinator.family_name}"
         self._attr_name = "eCO2"
 
     @property

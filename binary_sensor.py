@@ -58,7 +58,7 @@ class PicoMaintenanceBinarySensor(BaseEntity, BinarySensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator, device_index)
 
-        self._attr_unique_id = f"{DOMAIN}_filter_maintenance_{coordinator.pico_ip.replace('.', '_')}"
+        self._attr_unique_id = f"{DOMAIN}_filter_maintenance_{coordinator.family_name}"
         self._attr_name = "Filter Maintenance Required"
 
     @property

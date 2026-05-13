@@ -2,6 +2,7 @@
 
 from datetime import timedelta
 import logging
+import re
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -97,6 +98,17 @@ class MainCoordinator(DataUpdateCoordinator):
         _LOGGER.debug("[%s] Shutting down coordinator", self.device_name)
         # Client disconnect is handled by PicoClientManager
         pass
+
+    @property
+    def family_name(self) -> str:
+        """Return a normalized device name suitable for use in unique IDs.
+
+        Derived from the user-configured ``name`` in configuration.yaml, which
+        is stable and unique even when the device IP address changes.
+
+        Example: "Living Room Pico" → "living_room_pico"
+        """
+        return re.sub(r"[^a-z0-9]+", "_", self.device_name.lower()).strip("_")
 
     # Helper properties for easy access to device data
     @property
