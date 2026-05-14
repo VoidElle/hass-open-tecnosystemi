@@ -54,7 +54,7 @@ class PicoFan(BaseEntity, FanEntity):
 
         # Set unique_id based on stable user-configured family name
         self._attr_unique_id = f"{DOMAIN}_fan_{coordinator.family_name}"
-        self._attr_name = "Fan"
+        self._attr_name = f"{coordinator.device_name} CMV"
 
     @property
     def preset_modes(self) -> list[str]:

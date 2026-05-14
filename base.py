@@ -16,8 +16,6 @@ class BaseEntity(CoordinatorEntity):
     """Base Entity Class for Open Pico devices."""
 
     coordinator: MainCoordinator
-    _attr_has_entity_name = True
-
     def __init__(self, coordinator: MainCoordinator, device_index: int) -> None:
         """Initialise entity."""
         super().__init__(coordinator)
