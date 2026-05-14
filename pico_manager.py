@@ -2,8 +2,8 @@
 import logging
 from typing import Dict
 
-from .open_pico_local_api.pico_client import PicoClient
-from .open_pico_local_api.shared_transport_manager import SharedTransportManager
+from pico_client import PicoClient
+from shared_transport_manager import SharedTransportManager
 
 _LOGGER = logging.getLogger(__name__)
 

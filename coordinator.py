@@ -7,9 +7,9 @@ import re
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .open_pico_local_api.pico_client import PicoClient
-from .open_pico_local_api.models.pico_device_model import PicoDeviceModel
-from .open_pico_local_api.enums.device_mode_enum import DeviceModeEnum
+from pico_client import PicoClient
+from models.pico_device_model import PicoDeviceModel
+from enums.device_mode_enum import DeviceModeEnum
 
 from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
 

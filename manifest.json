@@ -9,7 +9,9 @@
   "issue_tracker": "https://github.com/VoidElle/hassio-open-pico/issues",
   "homekit": {},
   "iot_class": "local_polling",
-  "requirements": [],
+  "requirements": [
+    "open-pico-local-api @ git+https://github.com/VoidElle/open-pico-local-api.git@v2.2.1"
+  ],
   "single_config_entry": false,
   "ssdp": [],
   "version": "3.0.0",

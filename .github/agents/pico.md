@@ -60,8 +60,8 @@ All Pico clients share **one UDP socket** — avoids port conflicts when multipl
 | Class | File | Role |
 |-------|------|------|
 | `PicoClientManager` | `pico_manager.py` | Creates/manages clients; owns `SharedTransportManager` singleton |
-| `SharedTransportManager` | `open_pico_local_api/shared_transport_manager.py` | Singleton; binds UDP socket; routes responses by IDP range |
-| `PicoClient` | `open_pico_local_api/pico_client.py` | Per-device client; always `use_shared_transport=True` |
+| `SharedTransportManager` | `open-pico-local-api` pkg (`shared_transport_manager`) | Singleton; binds UDP socket; routes responses by IDP range |
+| `PicoClient` | `open-pico-local-api` pkg (`pico_client`) | Per-device client; always `use_shared_transport=True` |
 
 ### IDP routing
 Each device gets an allocated IDP range (`idp_range_start`, `idp_range_size=10000`).  
