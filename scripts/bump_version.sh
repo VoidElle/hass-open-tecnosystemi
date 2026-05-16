@@ -74,12 +74,6 @@ echo "Bumping version: $CURRENT → $NEW"
 sed -i '' "s/\"version\": \"${CURRENT}\"/\"version\": \"${NEW}\"/" "$MANIFEST"
 echo "  manifest.json   $CURRENT → $NEW"
 
-# --- update README.md version badge (if present) ---
-if grep -q "/badge/version-${CURRENT}-orange" "$README" 2>/dev/null; then
-  sed -i '' "s|/badge/version-${CURRENT}-orange|/badge/version-${NEW}-orange|" "$README"
-  echo "  README.md badge  $CURRENT → $NEW"
-fi
-
 echo "Done. Remember to:"
 echo "  git add manifest.json README.md"
 echo "  git commit -m \"chore: bump version to v${NEW}\""
