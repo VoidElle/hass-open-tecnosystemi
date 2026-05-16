@@ -272,10 +272,10 @@ _HVAC_TO_CU = {
 ### `PolarisZoneClimate` (one per zone)
 - `unique_id`: `polaris_<serial>_zone_<zone_id>`
 - Features: `TARGET_TEMPERATURE | TURN_ON | TURN_OFF`
-- HVAC modes: `OFF, FAN_ONLY` only
-  - `FAN_ONLY` = zone active (machine decides actual heat/cool/vent)
+- HVAC modes: `OFF, AUTO` only
+  - `AUTO` = zone active (machine decides actual heat/cool/vent)
   - `OFF` = zone off — **other zones unaffected**
-- `hvac_mode`: `OFF` if zone or machine is off, else `FAN_ONLY`
+- `hvac_mode`: `OFF` if zone or machine is off, else `AUTO`
 - `target_temperature_step`: `0.5`, min `10.0`, max `30.0`
 - `current_temperature`: `zone.current_temp`
 - `target_temperature`: `zone.set_temp`
