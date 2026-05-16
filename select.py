@@ -7,8 +7,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType
 
-from open_pico_local_api.enums.target_humidity_enum import TargetHumidityEnum
-from open_pico_local_api.enums.device_mode_enum import DeviceModeEnum
+from open_pico_local_api import TargetHumidityEnum, DeviceModeEnum
 
 from .const import DOMAIN, TARGET_HUMIDITY_OPTIONS, REVERSED_TARGET_HUMIDITY_OPTIONS, MODE_INT_TO_PRESET, MODE_PRESET_TO_INT
 from .base import BaseEntity

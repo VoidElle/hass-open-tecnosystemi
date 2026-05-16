@@ -6,6 +6,8 @@ from homeassistant.core import callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from open_pico_local_api import PicoDeviceModel
+
 from .const import DOMAIN
 from .coordinator import MainCoordinator
 

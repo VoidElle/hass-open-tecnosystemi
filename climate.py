@@ -4,7 +4,7 @@ Two entity types:
 - PolarisMainClimate: one per CU — controls global machine on/off, heat/cool mode,
   and cooling sub-mode (Raffrescamento / Deumidificazione / Ventilazione).
 - PolarisZoneClimate: one per zone — controls individual zone on/off and target temp.
-  Zone on/off is independent from the machine (upd_zona, not upd_cu).
+  Zone on/off is independent of the machine (upd_zona, not upd_cu).
 """
 from __future__ import annotations
 
