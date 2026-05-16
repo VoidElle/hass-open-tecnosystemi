@@ -26,9 +26,10 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from open_polaris_local_api import PolarisZone
+
 from .const import DOMAIN
 from .polaris_coordinator import PolarisCoordinator
-from .polaris_api.models import PolarisZone
 
 _LOGGER = logging.getLogger(__name__)
 

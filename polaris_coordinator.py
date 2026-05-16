@@ -8,8 +8,7 @@ import logging
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .polaris_api.polaris_client import PolarisLocalClient, PolarisApiError
-from .polaris_api.models import PolarisDevice, PolarisZone
+from open_polaris_local_api import PolarisLocalClient, PolarisApiError, PolarisDevice, PolarisZone
 
 from .const import DOMAIN
 

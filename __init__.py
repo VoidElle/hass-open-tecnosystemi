@@ -15,9 +15,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import config_validation as cv, discovery
 from homeassistant.helpers.typing import ConfigType
 
+from open_polaris_local_api import PolarisLocalClient
+
 from .const import DOMAIN
 from .coordinator import MainCoordinator
 from .pico_manager import PicoClientManager
+from .polaris_coordinator import PolarisCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -210,9 +213,6 @@ async def _setup_polaris_devices(
 
     Each entry requires 'ip' and 'pin'.
     """
-    from .polaris_api.polaris_client import PolarisLocalClient
-    from .polaris_coordinator import PolarisCoordinator
-
     successful = 0
 
     for idx, device_config in enumerate(devices):
