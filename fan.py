@@ -18,9 +18,9 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_platform(
     hass: HomeAssistant,
-    config: ConfigType,
+    _config: ConfigType,
     async_add_entities: AddEntitiesCallback,
-    discovery_info=None,
+    _discovery_info=None,
 ):
     """Set up the Fan platform from YAML."""
 
@@ -70,13 +70,14 @@ class PicoFan(BaseEntity, FanEntity):
     def preset_mode(self) -> str | None:
         """Return the current preset mode."""
         if not self.coordinator.data:
+            _LOGGER.debug("[%s] preset_mode: no data", self.coordinator.device_name)
             return None
 
-        # Get the current mode enum value (int)
-        mode_int = int(self.coordinator.current_mode)
-
-        # Convert to preset string
-        return MODE_INT_TO_PRESET.get(mode_int)
+        mode = self.coordinator.current_mode
+        if mode is None:
+            _LOGGER.debug("[%s] preset_mode: current_mode is None", self.coordinator.device_name)
+            return None
+        return MODE_INT_TO_PRESET.get(mode.value)
 
     @property
     def speed_count(self) -> int:
@@ -154,7 +155,7 @@ class PicoFan(BaseEntity, FanEntity):
         self,
         percentage: int | None = None,
         preset_mode: str | None = None,
-        **kwargs
+        **_kwargs
     ) -> None:
         """Turn on the fan."""
         try:
@@ -172,7 +173,7 @@ class PicoFan(BaseEntity, FanEntity):
             _LOGGER.error("Failed to turn on fan: %s", err)
             raise HomeAssistantError(f"Failed to turn on fan: {err}") from err
 
-    async def async_turn_off(self, **kwargs) -> None:
+    async def async_turn_off(self, **_kwargs) -> None:
         """Turn off the fan."""
         try:
             await self.coordinator.async_turn_off()
