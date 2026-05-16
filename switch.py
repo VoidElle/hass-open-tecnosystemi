@@ -16,9 +16,9 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_platform(
     hass: HomeAssistant,
-    config: ConfigType,
+    _config: ConfigType,
     async_add_entities: AddEntitiesCallback,
-    discovery_info=None,
+    _discovery_info=None,
 ):
     """Set up the Switch platform from YAML."""
 
@@ -63,7 +63,7 @@ class PicoNightModeSwitch(BaseEntity, SwitchEntity):
         """Return True if night mode is on."""
         return self.coordinator.night_mode_enabled
 
-    async def async_turn_on(self, **kwargs) -> None:
+    async def async_turn_on(self, **_kwargs) -> None:
         """Turn night mode on."""
         if not self.coordinator.supports_night_mode:
             current_mode = self.coordinator.current_mode.name if self.coordinator.current_mode else "Unknown"
@@ -77,7 +77,7 @@ class PicoNightModeSwitch(BaseEntity, SwitchEntity):
             _LOGGER.error("Failed to turn on night mode: %s", err)
             raise HomeAssistantError(f"Failed to turn on night mode: {err}") from err
 
-    async def async_turn_off(self, **kwargs) -> None:
+    async def async_turn_off(self, **_kwargs) -> None:
         """Turn night mode off."""
         if not self.coordinator.supports_night_mode:
             current_mode = self.coordinator.current_mode.name if self.coordinator.current_mode else "Unknown"
@@ -112,7 +112,7 @@ class PicoLEDStatusSwitch(BaseEntity, SwitchEntity):
         # led_on_off_short: 1 = ON, 2 = OFF
         return self.coordinator.data.operating.led_on_off_short == 1
 
-    async def async_turn_on(self, **kwargs) -> None:
+    async def async_turn_on(self, **_kwargs) -> None:
         """Turn LED on."""
         try:
             await self.coordinator.async_set_led_status(True)
@@ -120,7 +120,7 @@ class PicoLEDStatusSwitch(BaseEntity, SwitchEntity):
             _LOGGER.error("Failed to turn on LED: %s", err)
             raise HomeAssistantError(f"Failed to turn on LED: {err}") from err
 
-    async def async_turn_off(self, **kwargs) -> None:
+    async def async_turn_off(self, **_kwargs) -> None:
         """Turn LED off."""
         try:
             await self.coordinator.async_set_led_status(False)

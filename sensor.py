@@ -28,9 +28,9 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_platform(
         hass: HomeAssistant,
-        config: ConfigType,
+        _config: ConfigType,
         async_add_entities: AddEntitiesCallback,
-        discovery_info=None,
+        _discovery_info=None,
 ):
     """Set up the Sensor platform from YAML."""
 
@@ -48,7 +48,6 @@ async def async_setup_platform(
         ])
 
     # ─── Polaris sensors (per-zone temp/humidity + device mode) ───
-    from .polaris_coordinator import PolarisCoordinator
     verbose = hass.data[DOMAIN].get("config", {}).get("verbose", False)
     polaris_coordinators = hass.data[DOMAIN].get("polaris_coordinators", [])
     for coordinator in polaris_coordinators:
