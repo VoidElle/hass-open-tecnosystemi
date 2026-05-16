@@ -1,4 +1,4 @@
-"""DataUpdateCoordinator for Polaris 5 devices (local TCP port 1235)."""
+"""DataUpdateCoordinator for Polaris 5X devices (local TCP port 1235)."""
 from __future__ import annotations
 
 from dataclasses import dataclass

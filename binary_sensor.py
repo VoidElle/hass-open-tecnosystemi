@@ -115,7 +115,7 @@ class PolarisDeviceErrorBinarySensor(CoordinatorEntity, BinarySensorEntity):
             "identifiers": {(DOMAIN, f"polaris_{self._coordinator.serial}")},
             "name": dev.name if dev else f"Polaris {self._coordinator.serial}",
             "manufacturer": "Tecnosystemi",
-            "model": "Polaris 5",
+            "model": "Polaris 5X",
         }
 
     @callback
@@ -171,7 +171,7 @@ class PolarisZoneErrorBinarySensor(CoordinatorEntity, BinarySensorEntity):
             "identifiers": {(DOMAIN, f"polaris_{self._coordinator.serial}")},
             "name": dev.name if dev else f"Polaris {self._coordinator.serial}",
             "manufacturer": "Tecnosystemi",
-            "model": "Polaris 5",
+            "model": "Polaris 5X",
         }
 
     @callback

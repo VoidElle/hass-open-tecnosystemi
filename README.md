@@ -4,7 +4,7 @@
   <small><em>(Official Tecnosystemi logo not used due to copyright restrictions)</em></small>
   <br><br>
   <h1>🏠 Hass Open Tecnosystemi</h1>
-  <p><em>Home Assistant integration for Tecnosystemi Pico and Polaris 5 devices</em></p>
+  <p><em>Home Assistant integration for Tecnosystemi Pico and Polaris 5X devices</em></p>
 </div>
 
 
@@ -61,7 +61,7 @@ At this point, Home Assistant will load the integration and apply the configurat
 
 ## Configuration ⚙️
 
-The integration is configured via `configuration.yaml`. You can configure Pico devices, Polaris 5 devices, or both.
+The integration is configured via `configuration.yaml`. You can configure Pico devices, Polaris 5X devices, or both.
 
 ### Pico devices (local)
 
@@ -87,15 +87,15 @@ open_pico:
 | `pin`     | Yes      | Device PIN code                     |
 | `name`    | No       | Friendly name for the device        |
 
-### Polaris 5 devices (local)
+### Polaris 5X devices (local)
 
-Polaris 5 devices communicate via **local TCP on port 1235** - the same protocol used by the official Tecnosystemi app. You need the device's local IP address and PIN code.
+Polaris 5X devices communicate via **local TCP on port 1235** - the same protocol used by the official Tecnosystemi app. You need the device's local IP address and PIN code.
 
 > **How to find the IP and PIN:** Connect to the Polaris device's WiFi access point (SSID starts with `POLARIS_`), or find its IP in your router's DHCP table. The PIN is the same one you use in the official Tecnosystemi app when selecting a device.
 
 ```yaml
 open_pico:
-  # Polaris 5 devices (local TCP, port 1235)
+  # Polaris 5X devices (local TCP, port 1235)
   polaris_devices:
     - ip: "192.168.8.200"
       pin: "0000"

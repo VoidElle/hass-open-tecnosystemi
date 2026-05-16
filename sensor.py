@@ -307,7 +307,7 @@ class PolarisZoneTemperatureSensor(CoordinatorEntity, SensorEntity):
             "identifiers": {(DOMAIN, f"polaris_{self._coordinator.serial}")},
             "name": dev.name if dev else f"Polaris {self._coordinator.serial}",
             "manufacturer": "Tecnosystemi",
-            "model": "Polaris 5",
+            "model": "Polaris 5X",
         }
 
     @callback
@@ -361,7 +361,7 @@ class PolarisZoneHumiditySensor(CoordinatorEntity, SensorEntity):
             "identifiers": {(DOMAIN, f"polaris_{self._coordinator.serial}")},
             "name": dev.name if dev else f"Polaris {self._coordinator.serial}",
             "manufacturer": "Tecnosystemi",
-            "model": "Polaris 5",
+            "model": "Polaris 5X",
         }
 
     @callback
@@ -408,7 +408,7 @@ class PolarisOperatingModeSensor(CoordinatorEntity, SensorEntity):
             "identifiers": {(DOMAIN, f"polaris_{self._coordinator.serial}")},
             "name": dev.name if dev else f"Polaris {self._coordinator.serial}",
             "manufacturer": "Tecnosystemi",
-            "model": "Polaris 5",
+            "model": "Polaris 5X",
             "sw_version": dev.fw_ver if dev else None,
         }
 

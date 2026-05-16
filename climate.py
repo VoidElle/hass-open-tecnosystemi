@@ -1,4 +1,4 @@
-"""Climate platform for Polaris 5 devices (local TCP port 1235).
+"""Climate platform for Polaris 5X devices (local TCP port 1235).
 
 Two entity types:
 - PolarisMainClimate: one per CU — controls global machine on/off, heat/cool mode,
@@ -143,7 +143,7 @@ class PolarisMainClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
             "identifiers": {(DOMAIN, f"polaris_{self._coordinator.serial}")},
             "name": dev.name if dev else f"Polaris {self._coordinator.serial}",
             "manufacturer": "Tecnosystemi",
-            "model": "Polaris 5",
+            "model": "Polaris 5X",
             "sw_version": dev.fw_ver if dev else None,
         }
 
@@ -264,7 +264,7 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
             "identifiers": {(DOMAIN, f"polaris_{self._coordinator.serial}")},
             "name": dev.name if dev else f"Polaris {self._coordinator.serial}",
             "manufacturer": "Tecnosystemi",
-            "model": "Polaris 5",
+            "model": "Polaris 5X",
             "sw_version": dev.fw_ver if dev else None,
         }
 
