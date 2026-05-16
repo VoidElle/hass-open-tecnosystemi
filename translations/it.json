@@ -19,7 +19,7 @@
         "data": {
           "ip": "Indirizzo IP",
           "pin": "PIN",
-          "name": "Nome Dispositivo (opzionale)"
+          "name": "Nome Dispositivo"
         }
       },
       "pico_scan": {
@@ -86,7 +86,7 @@
     "error": {
       "cannot_connect": "Impossibile connettersi al dispositivo. Controlla l'indirizzo IP e il PIN.",
       "discovery_failed": "Scansione auto-discovery fallita. Controlla le impostazioni di rete.",
-      "no_devices_found": "Nessun nuovo dispositivo trovato in rete. I dispositivi scoperti potrebbero essere già configurati."
+      "no_devices_found": "Nessun nuovo dispositivo trovato in rete. Controlla la subnet inserita. I dispositivi scoperti potrebbero essere già configurati."
     },
     "abort": {
       "already_configured": "Questo dispositivo è già configurato."
@@ -152,6 +152,20 @@
     "binary_sensor": {
       "polaris_device_error": {
         "name": "Errore Dispositivo"
+      }
+    }
+  },
+  "selector": {
+    "device_type": {
+      "options": {
+        "pico": "Pico",
+        "polaris": "Polaris"
+      }
+    },
+    "setup_method": {
+      "options": {
+        "manual": "Manuale",
+        "scan": "Scansione"
       }
     }
   }

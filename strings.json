@@ -91,5 +91,19 @@
     "abort": {
       "already_configured": "This device is already configured."
     }
+  },
+  "selector": {
+    "device_type": {
+      "options": {
+        "pico": "Pico",
+        "polaris": "Polaris"
+      }
+    },
+    "setup_method": {
+      "options": {
+        "manual": "Manual",
+        "scan": "Scan"
+      }
+    }
   }
 }

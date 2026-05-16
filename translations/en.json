@@ -19,7 +19,7 @@
         "data": {
           "ip": "IP Address",
           "pin": "PIN",
-          "name": "Device Name (optional)"
+          "name": "Device Name"
         }
       },
       "pico_scan": {
@@ -86,7 +86,7 @@
     "error": {
       "cannot_connect": "Unable to connect to the device. Check the IP address and PIN.",
       "discovery_failed": "Auto-discovery scan failed. Check your network settings.",
-      "no_devices_found": "No new devices found on the network. All discovered devices may already be configured."
+      "no_devices_found": "No new devices found on the network. Check input subnet. All discovered devices may already be configured."
     },
     "abort": {
       "already_configured": "This device is already configured."
@@ -152,6 +152,20 @@
     "binary_sensor": {
       "polaris_device_error": {
         "name": "Device Error"
+      }
+    }
+  },
+  "selector": {
+    "device_type": {
+      "options": {
+        "pico": "Pico",
+        "polaris": "Polaris"
+      }
+    },
+    "setup_method": {
+      "options": {
+        "manual": "Manual",
+        "scan": "Scan"
       }
     }
   }
