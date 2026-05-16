@@ -17,6 +17,8 @@ _LOGGER = logging.getLogger(__name__)
 class BaseEntity(CoordinatorEntity):
     """Base Entity Class for Open Pico devices."""
 
+    _attr_has_entity_name = True
+
     coordinator: MainCoordinator
     def __init__(self, coordinator: MainCoordinator, device_index: int) -> None:
         """Initialise entity."""
@@ -42,7 +44,7 @@ class BaseEntity(CoordinatorEntity):
 
         return DeviceInfo(
             identifiers={(DOMAIN, self.coordinator.family_name)},
-            name=device_info.name or self.coordinator.device_name,
+            name=self.coordinator.device_name,
             manufacturer="Tecnosystemi",
             model=f"Model {device_info.model}",
             sw_version=device_info.firmware_version,

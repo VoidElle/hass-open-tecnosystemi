@@ -39,7 +39,7 @@ class PicoMaintenanceResetButton(BaseEntity, ButtonEntity):
         super().__init__(coordinator, device_index)
 
         self._attr_unique_id = f"{DOMAIN}_reset_maintenance_{coordinator.family_name}"
-        self._attr_name = f"{coordinator.device_name} - Reset Filter Maintenance"
+        self._attr_name = "Reset Filter Maintenance"
 
     @property
     def available(self) -> bool:

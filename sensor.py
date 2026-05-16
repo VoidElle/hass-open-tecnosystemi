@@ -66,7 +66,7 @@ class PicoTemperatureSensor(BaseEntity, SensorEntity):
         super().__init__(coordinator, device_index)
 
         self._attr_unique_id = f"{DOMAIN}_temperature_{coordinator.family_name}"
-        self._attr_name = f"{coordinator.device_name} - Temperature"
+        self._attr_name = "Temperature"
 
     @property
     def native_value(self) -> float | None:
@@ -90,7 +90,7 @@ class PicoHumiditySensor(BaseEntity, SensorEntity):
         super().__init__(coordinator, device_index)
 
         self._attr_unique_id = f"{DOMAIN}_humidity_{coordinator.family_name}"
-        self._attr_name = f"{coordinator.device_name} - Humidity"
+        self._attr_name = "Humidity"
 
     @property
     def native_value(self) -> float | None:
@@ -114,7 +114,7 @@ class PicoAirQualitySensor(BaseEntity, SensorEntity):
         super().__init__(coordinator, device_index)
 
         self._attr_unique_id = f"{DOMAIN}_air_quality_{coordinator.family_name}"
-        self._attr_name = f"{coordinator.device_name} - CO2"
+        self._attr_name = "CO2"
 
     @property
     def native_value(self) -> int | None:
@@ -138,7 +138,7 @@ class PicoTVOCSensor(BaseEntity, SensorEntity):
         super().__init__(coordinator, device_index)
 
         self._attr_unique_id = f"{DOMAIN}_tvoc_{coordinator.family_name}"
-        self._attr_name = f"{coordinator.device_name} - TVOC"
+        self._attr_name = "TVOC"
 
     @property
     def native_value(self) -> int | None:
@@ -188,7 +188,7 @@ class PicoECO2Sensor(BaseEntity, SensorEntity):
         super().__init__(coordinator, device_index)
 
         self._attr_unique_id = f"{DOMAIN}_eco2_{coordinator.family_name}"
-        self._attr_name = f"{coordinator.device_name} - eCO2"
+        self._attr_name = "eCO2"
 
     @property
     def native_value(self) -> int | None:

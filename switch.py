@@ -40,7 +40,7 @@ class PicoNightModeSwitch(BaseEntity, SwitchEntity):
         super().__init__(coordinator, device_index)
 
         self._attr_unique_id = f"{DOMAIN}_night_mode_{coordinator.family_name}"
-        self._attr_name = f"{coordinator.device_name} - Night Mode"
+        self._attr_name = "Night Mode"
 
     @property
     def available(self) -> bool:
@@ -97,7 +97,7 @@ class PicoLEDStatusSwitch(BaseEntity, SwitchEntity):
         super().__init__(coordinator, device_index)
 
         self._attr_unique_id = f"{DOMAIN}_led_status_{coordinator.family_name}"
-        self._attr_name = f"{coordinator.device_name} - LED Status"
+        self._attr_name = "LED Status"
 
     @property
     def is_on(self) -> bool | None:
