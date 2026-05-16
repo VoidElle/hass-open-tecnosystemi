@@ -177,6 +177,7 @@ class PolarisMainClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
         return float(dev.t_can) if dev and dev.t_can is not None else None
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
+        _LOGGER.debug("[%s] set_hvac_mode: %s", self._coordinator.device_name, hvac_mode)
         if hvac_mode == HVACMode.OFF:
             await self._coordinator.async_turn_off()
         else:
@@ -188,11 +189,12 @@ class PolarisMainClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
             )
             await self._coordinator.async_request_refresh()
 
-
     async def async_turn_on(self) -> None:
+        _LOGGER.debug("[%s] turn_on", self._coordinator.device_name)
         await self._coordinator.async_turn_on()
 
     async def async_turn_off(self) -> None:
+        _LOGGER.debug("[%s] turn_off", self._coordinator.device_name)
         await self._coordinator.async_turn_off()
 
     @callback
@@ -302,6 +304,7 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """OFF = turn zone off (upd_zona). AUTO = turn zone on (upd_zona)."""
+        _LOGGER.debug("[%s] zone %d set_hvac_mode: %s", self._coordinator.device_name, self._zone_id, hvac_mode)
         if hvac_mode == HVACMode.OFF:
             await self._coordinator.async_turn_zone_off(self._zone_id)
         else:
@@ -310,14 +313,17 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
     async def async_set_temperature(self, **kwargs: Any) -> None:
         temperature: float | None = kwargs.get(ATTR_TEMPERATURE)
         if temperature is not None:
+            _LOGGER.debug("[%s] zone %d set_temperature: %.1f", self._coordinator.device_name, self._zone_id, temperature)
             await self._coordinator.async_set_zone_temp(self._zone_id, temperature)
 
     async def async_turn_on(self) -> None:
         """Turn this zone on (upd_zona is_off=0). Other zones unaffected."""
+        _LOGGER.debug("[%s] zone %d turn_on", self._coordinator.device_name, self._zone_id)
         await self._coordinator.async_turn_zone_on(self._zone_id)
 
     async def async_turn_off(self) -> None:
         """Turn this zone off (upd_zona is_off=1). Other zones unaffected."""
+        _LOGGER.debug("[%s] zone %d turn_off", self._coordinator.device_name, self._zone_id)
         await self._coordinator.async_turn_zone_off(self._zone_id)
 
     @callback

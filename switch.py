@@ -33,7 +33,9 @@ async def async_setup_platform(
             PicoLEDStatusSwitch(coordinator, idx),
         ])
 
+    _LOGGER.debug("Setting up switch platform: %d switch(es)", len(switches))
     async_add_entities(switches)
+    _LOGGER.info("Added %d switch(es)", len(switches))
 
 
 class PicoNightModeSwitch(BaseEntity, SwitchEntity):
@@ -65,6 +67,7 @@ class PicoNightModeSwitch(BaseEntity, SwitchEntity):
 
     async def async_turn_on(self, **_kwargs) -> None:
         """Turn night mode on."""
+        _LOGGER.debug("[%s] night_mode: turn_on", self.coordinator.device_name)
         if not self.coordinator.supports_night_mode:
             current_mode = self.coordinator.current_mode.name if self.coordinator.current_mode else "Unknown"
             raise HomeAssistantError(
@@ -79,6 +82,7 @@ class PicoNightModeSwitch(BaseEntity, SwitchEntity):
 
     async def async_turn_off(self, **_kwargs) -> None:
         """Turn night mode off."""
+        _LOGGER.debug("[%s] night_mode: turn_off", self.coordinator.device_name)
         if not self.coordinator.supports_night_mode:
             current_mode = self.coordinator.current_mode.name if self.coordinator.current_mode else "Unknown"
             raise HomeAssistantError(
@@ -114,6 +118,7 @@ class PicoLEDStatusSwitch(BaseEntity, SwitchEntity):
 
     async def async_turn_on(self, **_kwargs) -> None:
         """Turn LED on."""
+        _LOGGER.debug("[%s] led_status: turn_on", self.coordinator.device_name)
         try:
             await self.coordinator.async_set_led_status(True)
         except Exception as err:
@@ -122,6 +127,7 @@ class PicoLEDStatusSwitch(BaseEntity, SwitchEntity):
 
     async def async_turn_off(self, **_kwargs) -> None:
         """Turn LED off."""
+        _LOGGER.debug("[%s] led_status: turn_off", self.coordinator.device_name)
         try:
             await self.coordinator.async_set_led_status(False)
         except Exception as err:

@@ -38,7 +38,9 @@ async def async_setup_platform(
         ]
     ]
 
+    _LOGGER.debug("Setting up select platform: %d select(s)", len(selects))
     async_add_entities(selects)
+    _LOGGER.info("Added %d select(s)", len(selects))
 
 
 class PicoTargetHumiditySelect(BaseEntity, SelectEntity):
@@ -83,8 +85,8 @@ class PicoTargetHumiditySelect(BaseEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         """Change the selected option."""
+        _LOGGER.debug("[%s] target_humidity: select_option %s", self.coordinator.device_name, option)
 
-        # Check if current mode supports target humidity control
         if not self.coordinator.supports_target_humidity:
             current_mode = self.coordinator.data.operating.mode.name if self.coordinator.data else "Unknown"
             raise HomeAssistantError(
@@ -138,6 +140,7 @@ class PicoPresetModeSelect(BaseEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         """Change the selected option."""
+        _LOGGER.debug("[%s] preset_mode: select_option %s", self.coordinator.device_name, option)
         if option not in self.options:
             raise ValueError(f"Invalid mode: {option}")
 

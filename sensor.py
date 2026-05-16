@@ -38,6 +38,7 @@ async def async_setup_platform(
 
     # ─── Pico sensors ─────────────────────────────────────────────
     coordinators = hass.data[DOMAIN].get("coordinators", [])
+    _LOGGER.debug("Setting up sensor platform: %d Pico coordinator(s)", len(coordinators))
     for idx, coordinator in enumerate(coordinators):
         sensors.extend([
             PicoTemperatureSensor(coordinator, idx),
@@ -50,6 +51,7 @@ async def async_setup_platform(
     # ─── Polaris sensors (per-zone temp/humidity + device mode) ───
     verbose = hass.data[DOMAIN].get("config", {}).get("verbose", False)
     polaris_coordinators = hass.data[DOMAIN].get("polaris_coordinators", [])
+    _LOGGER.debug("Setting up sensor platform: %d Polaris coordinator(s)", len(polaris_coordinators))
     for coordinator in polaris_coordinators:
         zones = coordinator.data.zones if coordinator.data else []
         if verbose:
@@ -79,6 +81,7 @@ async def async_setup_platform(
             )
 
     async_add_entities(sensors)
+    _LOGGER.info("Added %d sensor(s)", len(sensors))
 
 
 class PicoTemperatureSensor(BaseEntity, SensorEntity):

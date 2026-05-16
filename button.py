@@ -34,6 +34,7 @@ async def async_setup_platform(
     for idx, coordinator in enumerate(coordinators):
         buttons.append(PicoMaintenanceResetButton(coordinator, idx))
 
+    _LOGGER.debug("Setting up button platform: %d button(s)", len(buttons))
     async_add_entities(buttons)
     _LOGGER.info("Added %d button(s)", len(buttons))
 

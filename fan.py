@@ -27,13 +27,14 @@ async def async_setup_platform(
     # Get all coordinators from hass.data
     coordinators = hass.data[DOMAIN]["coordinators"]
 
-    # Create a fan entity for each coordinator/device
     fans = [
         PicoFan(coordinator, idx)
         for idx, coordinator in enumerate(coordinators)
     ]
 
+    _LOGGER.debug("Setting up fan platform: %d fan(s)", len(fans))
     async_add_entities(fans)
+    _LOGGER.info("Added %d fan(s)", len(fans))
 
 
 class PicoFan(BaseEntity, FanEntity):
@@ -97,14 +98,16 @@ class PicoFan(BaseEntity, FanEntity):
         if not self.coordinator.data:
             return None
 
-        # Return the percentage only if the mode supports it and night mode is not enabled
         if self.coordinator.supports_fan_speed and not self.coordinator.night_mode_enabled:
-            return self.coordinator.fan_speed
+            speed = self.coordinator.fan_speed
+            _LOGGER.debug("[%s] percentage: %d%%", self.coordinator.device_name, speed)
+            return speed
         else:
             return 100 if self.is_on else 0
 
     async def async_set_percentage(self, percentage: int) -> None:
         """Set speed based on percentage slider."""
+        _LOGGER.debug("[%s] set_percentage: %d%%", self.coordinator.device_name, percentage)
         if percentage == 0:
             await self.async_turn_off()
             return
@@ -135,6 +138,7 @@ class PicoFan(BaseEntity, FanEntity):
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set a new preset mode."""
+        _LOGGER.debug("[%s] set_preset_mode: %s", self.coordinator.device_name, preset_mode)
         if preset_mode not in self.preset_modes:
             raise ValueError(f"Invalid mode: {preset_mode}")
 
@@ -158,6 +162,7 @@ class PicoFan(BaseEntity, FanEntity):
         **_kwargs
     ) -> None:
         """Turn on the fan."""
+        _LOGGER.debug("[%s] turn_on: percentage=%s, preset_mode=%s", self.coordinator.device_name, percentage, preset_mode)
         try:
             await self.coordinator.async_turn_on()
 
@@ -175,6 +180,7 @@ class PicoFan(BaseEntity, FanEntity):
 
     async def async_turn_off(self, **_kwargs) -> None:
         """Turn off the fan."""
+        _LOGGER.debug("[%s] turn_off", self.coordinator.device_name)
         try:
             await self.coordinator.async_turn_off()
         except Exception as err:

@@ -31,14 +31,17 @@ async def async_setup_platform(
 
     # ─── Pico sensors ─────────────────────────────────────────────
     coordinators = hass.data[DOMAIN].get("coordinators", [])
+    _LOGGER.debug("Setting up binary_sensor platform: %d Pico coordinator(s)", len(coordinators))
     for idx, coordinator in enumerate(coordinators):
         sensors.append(PicoMaintenanceBinarySensor(coordinator, idx))
 
     # ─── Polaris sensors (device error + per-zone error) ──────────
     polaris_coordinators = hass.data[DOMAIN].get("polaris_coordinators", [])
+    _LOGGER.debug("Setting up binary_sensor platform: %d Polaris coordinator(s)", len(polaris_coordinators))
     for coordinator in polaris_coordinators:
         sensors.append(PolarisDeviceErrorBinarySensor(coordinator))
         zones = coordinator.data.zones if coordinator.data else []
+        _LOGGER.debug("[Polaris][%s] Adding error sensors for %d zone(s)", coordinator.device_name, len(zones))
         for zone in zones:
             sensors.append(PolarisZoneErrorBinarySensor(coordinator, zone.zone_id))
 
