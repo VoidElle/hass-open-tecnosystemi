@@ -1,14 +1,13 @@
 """Select platform for Open Pico integration."""
 import logging
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.components.select import SelectEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType
 
-from .open_pico_local_api.enums.target_humidity_enum import TargetHumidityEnum
-from .open_pico_local_api.enums.device_mode_enum import DeviceModeEnum
+from open_pico_local_api import TargetHumidityEnum, DeviceModeEnum
 
 from .const import DOMAIN, TARGET_HUMIDITY_OPTIONS, REVERSED_TARGET_HUMIDITY_OPTIONS, MODE_INT_TO_PRESET, MODE_PRESET_TO_INT
 from .base import BaseEntity
@@ -17,28 +16,19 @@ from .coordinator import MainCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_platform(
+async def async_setup_entry(
     hass: HomeAssistant,
-    config: ConfigType,
+    entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
-    discovery_info=None,
-):
-    """Set up the Select platform from YAML."""
-
-    # Get all coordinators from hass.data
-    coordinators = hass.data[DOMAIN]["coordinators"]
-
-    # Create select entities for each coordinator/device
-    selects = [
-        entity
-        for idx, coordinator in enumerate(coordinators)
-        for entity in [
-            PicoTargetHumiditySelect(coordinator, idx),
-            PicoPresetModeSelect(coordinator, idx)
-        ]
-    ]
-
-    async_add_entities(selects)
+) -> None:
+    """Set up Pico selects from a config entry."""
+    if entry.data.get("device_type") != "pico":
+        return
+    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    async_add_entities([
+        PicoTargetHumiditySelect(coordinator, 0),
+        PicoPresetModeSelect(coordinator, 0),
+    ])
 
 
 class PicoTargetHumiditySelect(BaseEntity, SelectEntity):
@@ -50,8 +40,8 @@ class PicoTargetHumiditySelect(BaseEntity, SelectEntity):
         """Initialize the select."""
         super().__init__(coordinator, device_index)
 
-        # Set unique_id based on IP address
-        self._attr_unique_id = f"{DOMAIN}_target_humidity_{coordinator.pico_ip.replace('.', '_')}"
+        # Set unique_id based on stable user-configured family name
+        self._attr_unique_id = f"{DOMAIN}_target_humidity_{coordinator.family_name}"
         self._attr_name = "Target Humidity"
 
     @property
@@ -83,8 +73,8 @@ class PicoTargetHumiditySelect(BaseEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         """Change the selected option."""
+        _LOGGER.debug("[%s] target_humidity: select_option %s", self.coordinator.device_name, option)
 
-        # Check if current mode supports target humidity control
         if not self.coordinator.supports_target_humidity:
             current_mode = self.coordinator.data.operating.mode.name if self.coordinator.data else "Unknown"
             raise HomeAssistantError(
@@ -115,8 +105,8 @@ class PicoPresetModeSelect(BaseEntity, SelectEntity):
         """Initialize the select."""
         super().__init__(coordinator, device_index)
 
-        # Set unique_id based on IP address
-        self._attr_unique_id = f"{DOMAIN}_preset_mode_{coordinator.pico_ip.replace('.', '_')}"
+        # Set unique_id based on stable user-configured family name
+        self._attr_unique_id = f"{DOMAIN}_preset_mode_{coordinator.family_name}"
         self._attr_name = "Preset Mode"
 
     @property
@@ -125,11 +115,11 @@ class PicoPresetModeSelect(BaseEntity, SelectEntity):
         if not self.coordinator.data:
             return None
 
-        # Get the current mode enum value (int)
-        mode_int = int(self.coordinator.current_mode)
-
-        # Convert to preset string
-        return MODE_INT_TO_PRESET.get(mode_int)
+        mode = self.coordinator.current_mode
+        if mode is None:
+            _LOGGER.debug("[%s] current_option: current_mode is None", self.coordinator.device_name)
+            return None
+        return MODE_INT_TO_PRESET.get(mode.value)
 
     @property
     def options(self) -> list[str]:
@@ -138,6 +128,7 @@ class PicoPresetModeSelect(BaseEntity, SelectEntity):
 
     async def async_select_option(self, option: str) -> None:
         """Change the selected option."""
+        _LOGGER.debug("[%s] preset_mode: select_option %s", self.coordinator.device_name, option)
         if option not in self.options:
             raise ValueError(f"Invalid mode: {option}")
 

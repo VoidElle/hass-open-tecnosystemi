@@ -1,13 +1,13 @@
 """Fan platform for Open Pico integration."""
 import logging
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.components.fan import FanEntity, FanEntityFeature
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType
 
-from .open_pico_local_api.enums.device_mode_enum import DeviceModeEnum
+from open_pico_local_api import DeviceModeEnum
 
 from .const import DOMAIN, MODE_INT_TO_PRESET, MODE_PRESET_TO_INT
 from .base import BaseEntity
@@ -16,24 +16,16 @@ from .coordinator import MainCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_platform(
+async def async_setup_entry(
     hass: HomeAssistant,
-    config: ConfigType,
+    entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
-    discovery_info=None,
-):
-    """Set up the Fan platform from YAML."""
-
-    # Get all coordinators from hass.data
-    coordinators = hass.data[DOMAIN]["coordinators"]
-
-    # Create a fan entity for each coordinator/device
-    fans = [
-        PicoFan(coordinator, idx)
-        for idx, coordinator in enumerate(coordinators)
-    ]
-
-    async_add_entities(fans)
+) -> None:
+    """Set up Pico fan from a config entry."""
+    if entry.data.get("device_type") != "pico":
+        return
+    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    async_add_entities([PicoFan(coordinator, 0)])
 
 
 class PicoFan(BaseEntity, FanEntity):
@@ -52,9 +44,9 @@ class PicoFan(BaseEntity, FanEntity):
         """Initialize the fan."""
         super().__init__(coordinator, device_index)
 
-        # Set unique_id based on IP address
-        self._attr_unique_id = f"{DOMAIN}_fan_{coordinator.pico_ip.replace('.', '_')}"
-        self._attr_name = "Fan"
+        # Set unique_id based on stable user-configured family name
+        self._attr_unique_id = f"{DOMAIN}_fan_{coordinator.family_name}"
+        self._attr_name = "CMV"
 
     @property
     def preset_modes(self) -> list[str]:
@@ -70,13 +62,14 @@ class PicoFan(BaseEntity, FanEntity):
     def preset_mode(self) -> str | None:
         """Return the current preset mode."""
         if not self.coordinator.data:
+            _LOGGER.debug("[%s] preset_mode: no data", self.coordinator.device_name)
             return None
 
-        # Get the current mode enum value (int)
-        mode_int = int(self.coordinator.current_mode)
-
-        # Convert to preset string
-        return MODE_INT_TO_PRESET.get(mode_int)
+        mode = self.coordinator.current_mode
+        if mode is None:
+            _LOGGER.debug("[%s] preset_mode: current_mode is None", self.coordinator.device_name)
+            return None
+        return MODE_INT_TO_PRESET.get(mode.value)
 
     @property
     def speed_count(self) -> int:
@@ -96,14 +89,16 @@ class PicoFan(BaseEntity, FanEntity):
         if not self.coordinator.data:
             return None
 
-        # Return the percentage only if the mode supports it and night mode is not enabled
         if self.coordinator.supports_fan_speed and not self.coordinator.night_mode_enabled:
-            return self.coordinator.fan_speed
+            speed = self.coordinator.fan_speed
+            _LOGGER.debug("[%s] percentage: %d%%", self.coordinator.device_name, speed)
+            return speed
         else:
             return 100 if self.is_on else 0
 
     async def async_set_percentage(self, percentage: int) -> None:
         """Set speed based on percentage slider."""
+        _LOGGER.debug("[%s] set_percentage: %d%%", self.coordinator.device_name, percentage)
         if percentage == 0:
             await self.async_turn_off()
             return
@@ -134,6 +129,7 @@ class PicoFan(BaseEntity, FanEntity):
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set a new preset mode."""
+        _LOGGER.debug("[%s] set_preset_mode: %s", self.coordinator.device_name, preset_mode)
         if preset_mode not in self.preset_modes:
             raise ValueError(f"Invalid mode: {preset_mode}")
 
@@ -154,9 +150,10 @@ class PicoFan(BaseEntity, FanEntity):
         self,
         percentage: int | None = None,
         preset_mode: str | None = None,
-        **kwargs
+        **_kwargs
     ) -> None:
         """Turn on the fan."""
+        _LOGGER.debug("[%s] turn_on: percentage=%s, preset_mode=%s", self.coordinator.device_name, percentage, preset_mode)
         try:
             await self.coordinator.async_turn_on()
 
@@ -172,8 +169,9 @@ class PicoFan(BaseEntity, FanEntity):
             _LOGGER.error("Failed to turn on fan: %s", err)
             raise HomeAssistantError(f"Failed to turn on fan: {err}") from err
 
-    async def async_turn_off(self, **kwargs) -> None:
+    async def async_turn_off(self, **_kwargs) -> None:
         """Turn off the fan."""
+        _LOGGER.debug("[%s] turn_off", self.coordinator.device_name)
         try:
             await self.coordinator.async_turn_off()
         except Exception as err:

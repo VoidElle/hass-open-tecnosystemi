@@ -24,11 +24,11 @@ Config schema: `POLARIS_DEVICE_SCHEMA` in `__init__.py`. `scan_interval < 10` re
 
 ---
 
-## Setup Flow (`__init__.py → _setup_polaris_devices`)
+## Setup Flow (`__init__.py -> _setup_polaris_devices`)
 
 For each device:
 1. Create `PolarisLocalClient(ip, pin, port=1235, timeout=5.0, retry_attempts=2, retry_delay=1.0)`
-2. `client.connect()` → calls `async_update()` → performs first TCP poll
+2. `client.connect()` -> calls `async_update()` -> performs first TCP poll
 3. Create `PolarisCoordinator(hass, client, device_name, scan_interval)`
 4. `await coordinator.async_config_entry_first_refresh()` with 30s timeout
 5. Append to `hass.data[DOMAIN]["polaris_coordinators"]`
@@ -50,7 +50,7 @@ hass.data[DOMAIN] = {
 
 ### Transport
 - **TCP**, port **1235**
-- Per-command short-lived connections (open → write → read → close) — mirrors `MySocket.sendAndReceive`
+- Per-command short-lived connections (open -> write -> read -> close) — mirrors `MySocket.sendAndReceive`
 - `_BUFFER_SIZE = 4096` in our client (`1000` in APK Java)
 - Read loop: `while True: chunk = await reader.read(_BUFFER_SIZE); if len(chunk) < _BUFFER_SIZE: break`
 - **Connect timeout**: APK uses `1000ms`; our client wraps each command in `asyncio.wait_for(timeout=self.timeout)`
@@ -67,7 +67,7 @@ Fallback if `res=4` (CMD_NOT_FOUND — old firmware):
 ```json
 {"c": "stato", "pin": "<pin>"}
 ```
-Implementation in `polaris_client.py → get_status()`:
+Implementation in `polaris_client.py -> get_status()`:
 ```python
 cmd = {"c": "stato_r", "pin": self.pin}
 response = await self._send_command_with_retry(cmd)
@@ -90,7 +90,7 @@ if response.get("res") == 4:
 - `cool_mod`: `1`=Raffrescamento, `2`=Deumidificazione, `3`=Ventilazione (only when `is_cool=1`); `0` when heating
 - `t_can`: canal setpoint in °C × 10 (stored as `PolarisDevice.t_can` in °C; multiply by 10 before sending)
 - **Must send ALL fields every time** — device resets missing fields to defaults
-- Implementation in `polaris_client.py → update_cu()`: reads from `self._device` to fill unchanged fields
+- Implementation in `polaris_client.py -> update_cu()`: reads from `self._device` to fill unchanged fields
 
 ### Command: Zone update — `upd_zona`
 ```json
@@ -104,7 +104,7 @@ if response.get("res") == 4:
 - `name`: always uppercase (APK calls `.toUpperCase()`); our code sends `zone.name` as-is (already uppercase from device)
 - `t_set`: integer string — `str(round(set_temp * 10))` e.g. `"215"` = 21.5°C
 - `fan_set`/`shu_set`: always sent together with same value
-  - Value `7` (AUTO) → send as `16` on wire
+  - Value `7` (AUTO) -> send as `16` on wire
   - Only fancoil present (`serranda == -1`): use `fancoil_set`
   - Only serranda present (`fancoil == -1`): use `serranda_set`
   - Both present: fancoil wins (default `lastFancoil=True`)
@@ -122,7 +122,7 @@ if response.get("res") == 4:
 - Keys `"0"`–`"6"` = Mon–Sun; each day has exactly **4 slots**
 - `"i"` = start time in 15-min units, `"f"` = end time, `"t"` = temp × 10
 - Empty slot sentinel: `{"i": 0, "f": 0, "t": 240}`
-- Time: `HH:MM` → int = `(hours * 60 + minutes) / 15` (e.g. `08:00` → `32`)
+- Time: `HH:MM` -> int = `(hours * 60 + minutes) / 15` (e.g. `08:00` -> `32`)
 
 ---
 
@@ -140,7 +140,7 @@ class PolarisDevice:
     f_inv: int; f_est: int; ir_present: int; num_errors: int
 ```
 `PolarisDevice.is_on` = `not is_off`
-`PolarisDevice.cooling_mode_name` → `{0:"Riscaldamento", 1:"Raffrescamento", 2:"Deumidificazione", 3:"Ventilazione"}`
+`PolarisDevice.cooling_mode_name` -> `{0:"Riscaldamento", 1:"Raffrescamento", 2:"Deumidificazione", 3:"Ventilazione"}`
 
 Parsed via `PolarisDevice.from_local(data)` — handles both ridotto and full response formats.
 
@@ -161,7 +161,7 @@ class PolarisZone:
 `PolarisZone.is_on` = `not is_off`
 Parsed via `PolarisZone.from_local(data)` — handles ridotto, full, and cloud PascalCase fields.
 
-### Response field mapping (ridotto → full)
+### Response field mapping (ridotto -> full)
 **CU (`stato_r` ridotto):**
 | Ridotto | Full | Meaning |
 |---------|------|---------|
@@ -203,9 +203,9 @@ Parsed via `PolarisZone.from_local(data)` — handles ridotto, full, and cloud P
 client = PolarisLocalClient(ip, pin, port=1235, timeout=5.0,
                              retry_attempts=2, retry_delay=1.0, verbose=False)
 ```
-- `connect()` → calls `async_update()` → sets `_connected=True`, caches `_device`/`_zones`
-- `disconnect()` / `close()` → sets `_connected=False` (TCP is stateless per-command)
-- `async_update()` → `get_status()` → `PolarisDevice.from_local()` + `PolarisZone.from_local()` for each zone
+- `connect()` -> calls `async_update()` -> sets `_connected=True`, caches `_device`/`_zones`
+- `disconnect()` / `close()` -> sets `_connected=False` (TCP is stateless per-command)
+- `async_update()` -> `get_status()` -> `PolarisDevice.from_local()` + `PolarisZone.from_local()` for each zone
 
 ### Control methods
 ```python
@@ -265,23 +265,23 @@ _HVAC_TO_CU = {
 - Features: `TURN_ON | TURN_OFF`
 - HVAC modes: `OFF, HEAT, COOL, DRY, FAN_ONLY`
 - `current_temperature`: `dev.t_can` (canal temp, °C)
-- `async_set_hvac_mode(OFF)` → `coordinator.async_turn_off()`
-- `async_set_hvac_mode(other)` → `client.update_cu(is_off=False, is_cooling=..., operating_mode=...)` + refresh
+- `async_set_hvac_mode(OFF)` -> `coordinator.async_turn_off()`
+- `async_set_hvac_mode(other)` -> `client.update_cu(is_off=False, is_cooling=..., operating_mode=...)` + refresh
 - `device_info` identifiers: `(DOMAIN, f"polaris_{serial}")`
 
 ### `PolarisZoneClimate` (one per zone)
 - `unique_id`: `polaris_<serial>_zone_<zone_id>`
 - Features: `TARGET_TEMPERATURE | TURN_ON | TURN_OFF`
-- HVAC modes: `OFF, FAN_ONLY` only
-  - `FAN_ONLY` = zone active (machine decides actual heat/cool/vent)
+- HVAC modes: `OFF, AUTO` only
+  - `AUTO` = zone active (machine decides actual heat/cool/vent)
   - `OFF` = zone off — **other zones unaffected**
-- `hvac_mode`: `OFF` if zone or machine is off, else `FAN_ONLY`
+- `hvac_mode`: `OFF` if zone or machine is off, else `AUTO`
 - `target_temperature_step`: `0.5`, min `10.0`, max `30.0`
 - `current_temperature`: `zone.current_temp`
 - `target_temperature`: `zone.set_temp`
 - `current_humidity`: `zone.humidity`
-- `async_set_temperature` → `coordinator.async_set_zone_temp(zone_id, temp)`
-- `async_turn_on/off` → `coordinator.async_turn_zone_on/off(zone_id)`
+- `async_set_temperature` -> `coordinator.async_set_zone_temp(zone_id, temp)`
+- `async_turn_on/off` -> `coordinator.async_turn_zone_on/off(zone_id)`
 
 ---
 
@@ -291,18 +291,18 @@ _HVAC_TO_CU = {
 | `res` | Meaning |
 |-------|---------|
 | `1` | OK |
-| `4` | CMD_NOT_FOUND — fall back `stato_r` → `stato` |
+| `4` | CMD_NOT_FOUND — fall back `stato_r` -> `stato` |
 | other | Error |
 | missing | Protocol error / wrong format |
 
 ### Critical rules
 - `stato_sync` is cloud/HTTP only — **never send over TCP**
 - `upd_cu` must send ALL fields — read `self._device` state and merge before sending
-- Polling too fast (< 10s) overloads device TCP stack → official app shows "Stato sistema non sincronizzato"
+- Polling too fast (< 10s) overloads device TCP stack -> official app shows "Stato sistema non sincronizzato"
 - Default `scan_interval: 30s` is safe
 - `t_can` stored internally as °C; multiply by 10 when sending in `upd_cu`
 - `t_set` sent as integer string: `str(round(temp * 10))`
-- `fan_set`/`shu_set` value `7` → send as `16` (AUTO encoding)
+- `fan_set`/`shu_set` value `7` -> send as `16` (AUTO encoding)
 
 ### APK Source References
 - `it.tecnosystemi.TS.Model.ControlUnit.update_CU_command()` — canonical `upd_cu` builder
@@ -310,4 +310,4 @@ _HVAC_TO_CU = {
 - `it.tecnosystemi.TS.Commands.Protocols` — command string constants
 - `it.tecnosystemi.TS.Utils.Constants` — all integer constants (`CU_ON=0`, `CU_OFF=1`, `CU_OPERATINGMODE_RAFF=1`, etc.)
 - `it.tecnosystemi.TS.Commands.MySocket.commandToCU()` — TCP send/retry logic
-- `it.tecnosystemi.TS.Activity.ControlUnitActivity` — UI → command flow (btnOnOff, btnRaff, saveData)
+- `it.tecnosystemi.TS.Activity.ControlUnitActivity` — UI -> command flow (btnOnOff, btnRaff, saveData)

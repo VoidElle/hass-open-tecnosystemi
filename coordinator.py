@@ -2,13 +2,12 @@
 
 from datetime import timedelta
 import logging
+import re
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .open_pico_local_api.pico_client import PicoClient
-from .open_pico_local_api.models.pico_device_model import PicoDeviceModel
-from .open_pico_local_api.enums.device_mode_enum import DeviceModeEnum
+from open_pico_local_api import PicoClient, PicoDeviceModel, DeviceModeEnum
 
 from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
 
@@ -24,13 +23,13 @@ class MainCoordinator(DataUpdateCoordinator):
             self,
             hass: HomeAssistant,
             client: PicoClient,
-            device_name: str = None
+            device_name: str,
     ) -> None:
         """Initialize coordinator."""
         self.client = client
         self.pico_ip = client.ip
         self.device_id = client.device_id
-        self.device_name = device_name or f"Pico {client.ip}"
+        self.device_name = device_name
 
         # Track consecutive failures for IDP reset
         self._consecutive_failures = 0
@@ -97,6 +96,16 @@ class MainCoordinator(DataUpdateCoordinator):
         _LOGGER.debug("[%s] Shutting down coordinator", self.device_name)
         # Client disconnect is handled by PicoClientManager
         pass
+
+    @property
+    def family_name(self) -> str:
+        """Return a normalized device name suitable for use in unique IDs and device registry.
+
+        Derived from the mandatory user-configured ``name``. Stable as long as name is not changed.
+
+        Example: "Living Room Pico" -> "living_room_pico"
+        """
+        return re.sub(r"[^a-z0-9]+", "_", self.device_name.lower()).strip("_")
 
     # Helper properties for easy access to device data
     @property

@@ -2,12 +2,11 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.components.button import ButtonEntity, ButtonDeviceClass
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType
 
 from .const import DOMAIN
 from .base import BaseEntity
@@ -16,26 +15,16 @@ from .coordinator import MainCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_platform(
+async def async_setup_entry(
     hass: HomeAssistant,
-    config: ConfigType,
+    entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
-    discovery_info: dict[str, Any] | None = None,
 ) -> None:
-    """Set up the Button platform from YAML."""
-    if discovery_info is None:
+    """Set up Pico buttons from a config entry."""
+    if entry.data.get("device_type") != "pico":
         return
-
-    # Get all coordinators from hass.data
-    coordinators = hass.data[DOMAIN]["coordinators"]
-
-    # Create button entities for each coordinator/device
-    buttons = []
-    for idx, coordinator in enumerate(coordinators):
-        buttons.append(PicoMaintenanceResetButton(coordinator, idx))
-
-    async_add_entities(buttons)
-    _LOGGER.info("Added %d button(s)", len(buttons))
+    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    async_add_entities([PicoMaintenanceResetButton(coordinator, 0)])
 
 
 class PicoMaintenanceResetButton(BaseEntity, ButtonEntity):
@@ -49,8 +38,8 @@ class PicoMaintenanceResetButton(BaseEntity, ButtonEntity):
         """Initialize the button."""
         super().__init__(coordinator, device_index)
 
-        self._attr_unique_id = f"{DOMAIN}_reset_maintenance_{coordinator.pico_ip.replace('.', '_')}"
-        self._attr_name = "Reset Filter Maintenance Button"
+        self._attr_unique_id = f"{DOMAIN}_reset_maintenance_{coordinator.family_name}"
+        self._attr_name = "Reset Filter Maintenance"
 
     @property
     def available(self) -> bool:

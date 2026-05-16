@@ -28,10 +28,10 @@ Config schema lives in `__init__.py` (`PICO_DEVICE_SCHEMA`, `CONFIG_SCHEMA`).
 
 ## Architecture
 
-### Setup flow (`__init__.py → async_setup`)
+### Setup flow (`__init__.py -> async_setup`)
 1. Read `devices` list from YAML
-2. Create `PicoClientManager` → `initialize()` (binds shared UDP socket on `local_port`)
-3. For each device: `manager.create_client(ip, pin, ...)` → `client.connect()` → create `MainCoordinator` → `async_refresh()`
+2. Create `PicoClientManager` -> `initialize()` (binds shared UDP socket on `local_port`)
+3. For each device: `manager.create_client(ip, pin, ...)` -> `client.connect()` -> create `MainCoordinator` -> `async_refresh()`
 4. Append coordinator to `hass.data[DOMAIN]["coordinators"]`
 5. Load platforms via `discovery.async_load_platform` for all `PICO_PLATFORMS`
 
@@ -60,8 +60,8 @@ All Pico clients share **one UDP socket** — avoids port conflicts when multipl
 | Class | File | Role |
 |-------|------|------|
 | `PicoClientManager` | `pico_manager.py` | Creates/manages clients; owns `SharedTransportManager` singleton |
-| `SharedTransportManager` | `open_pico_local_api/shared_transport_manager.py` | Singleton; binds UDP socket; routes responses by IDP range |
-| `PicoClient` | `open_pico_local_api/pico_client.py` | Per-device client; always `use_shared_transport=True` |
+| `SharedTransportManager` | `open-pico-local-api` pkg (`shared_transport_manager`) | Singleton; binds UDP socket; routes responses by IDP range |
+| `PicoClient` | `open-pico-local-api` pkg (`pico_client`) | Per-device client; always `use_shared_transport=True` |
 
 ### IDP routing
 Each device gets an allocated IDP range (`idp_range_start`, `idp_range_size=10000`).  
@@ -127,7 +127,7 @@ device_id = f"pico_{ip.replace('.', '_')}"
 ### ACK handshake
 - Device sends ACK: `{"res": 99, "frm": "mst", "idp": <int>}`
 - Client must reply: `{"idp": <int>, "frm": "app", "res": 99}` then await status response
-- `_wait_for_response()` handles this: detects ACK → waits for real response → sends ACK reply
+- `_wait_for_response()` handles this: detects ACK -> waits for real response -> sends ACK reply
 
 ---
 
@@ -145,11 +145,11 @@ Fields parsed in `PicoDeviceModel.from_dict(data)`:
 | `ParameterArraysModel` | `par_rt`, `par_mm`, `par_amb`, `par_ext`, `err[]`, `man[]` |
 
 **Key computed properties:**
-- `PicoDeviceModel.is_on` → `operating.on_off == OnOffStateEnum.ON`
-- `PicoDeviceModel.support_fan_speed_control` → `operating.mode in MODULAR_FAN_SPEED_PRESET_MODES`
-- `PicoDeviceModel.support_target_humidity_selection` → `operating.mode in HUMIDITY_SELECTOR_PRESET_MODES`
-- `PicoDeviceModel.support_night_mode_toggle` → same as fan speed
-- `DeviceInfoModel.needs_clean_filters_maintenance` → `man[0] == 1`
+- `PicoDeviceModel.is_on` -> `operating.on_off == OnOffStateEnum.ON`
+- `PicoDeviceModel.support_fan_speed_control` -> `operating.mode in MODULAR_FAN_SPEED_PRESET_MODES`
+- `PicoDeviceModel.support_target_humidity_selection` -> `operating.mode in HUMIDITY_SELECTOR_PRESET_MODES`
+- `PicoDeviceModel.support_night_mode_toggle` -> same as fan speed
+- `DeviceInfoModel.needs_clean_filters_maintenance` -> `man[0] == 1`
 
 ### Operating modes (`DeviceModeEnum` / `MODE_INT_TO_PRESET`)
 | Int | Enum | Preset string |
@@ -174,7 +174,7 @@ Fields parsed in `PicoDeviceModel.from_dict(data)`:
 `HUMIDITY_RECOVERY, HUMIDITY_EXTRACTION, HUMIDITY_CO2_RECOVERY, HUMIDITY_CO2_EXTRACTION`
 
 ### `TargetHumidityEnum` / `TARGET_HUMIDITY_OPTIONS`
-`1` → `"40%"`, `2` → `"50%"`, `3` → `"60%"`
+`1` -> `"40%"`, `2` -> `"50%"`, `3` -> `"60%"`
 
 ---
 
@@ -208,7 +208,7 @@ coordinator.async_set_target_humidity(target: int) # raises if mode unsupported
 ```
 
 ### Failure handling
-`_consecutive_failures` tracked; `_max_failures_before_reset = 3`. On disconnect → reconnect in `async_update_data`.
+`_consecutive_failures` tracked; `_max_failures_before_reset = 3`. On disconnect -> reconnect in `async_update_data`.
 
 ---
 
@@ -251,6 +251,6 @@ No automated test suite. Manual steps:
 1. Install at `custom_components/hassio_open_pico/` (folder name matters)
 2. Add YAML config under `open_pico:`
 3. Restart HA; check logs with `verbose: true`
-4. Validate YAML: **Developer Tools → YAML → Check Configuration**
+4. Validate YAML: **Developer Tools -> YAML -> Check Configuration**
 
 Loaded via `async_setup` (YAML), not `async_setup_entry`. UI "Add Integration" registers the domain but does nothing else.

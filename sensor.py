@@ -4,6 +4,7 @@ Supports both Pico device sensors and Polaris zone sensors.
 """
 import logging
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.components.sensor import (
     SensorEntity,
     SensorDeviceClass,
@@ -16,7 +17,6 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, POLARIS_COOLING_MODES
@@ -26,60 +26,30 @@ from .coordinator import MainCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_platform(
-        hass: HomeAssistant,
-        config: ConfigType,
-        async_add_entities: AddEntitiesCallback,
-        discovery_info=None,
-):
-    """Set up the Sensor platform from YAML."""
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up sensors from a config entry (Pico or Polaris)."""
+    device_type = entry.data.get("device_type")
+    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
 
-    sensors = []
-
-    # ─── Pico sensors ─────────────────────────────────────────────
-    coordinators = hass.data[DOMAIN].get("coordinators", [])
-    for idx, coordinator in enumerate(coordinators):
-        sensors.extend([
-            PicoTemperatureSensor(coordinator, idx),
-            PicoHumiditySensor(coordinator, idx),
-            PicoAirQualitySensor(coordinator, idx),
-            PicoTVOCSensor(coordinator, idx),
-            PicoECO2Sensor(coordinator, idx),
+    if device_type == "pico":
+        async_add_entities([
+            PicoTemperatureSensor(coordinator, 0),
+            PicoHumiditySensor(coordinator, 0),
+            PicoAirQualitySensor(coordinator, 0),
+            PicoTVOCSensor(coordinator, 0),
+            PicoECO2Sensor(coordinator, 0),
         ])
-
-    # ─── Polaris sensors (per-zone temp/humidity + device mode) ───
-    from .polaris_coordinator import PolarisCoordinator
-    verbose = hass.data[DOMAIN].get("config", {}).get("verbose", False)
-    polaris_coordinators = hass.data[DOMAIN].get("polaris_coordinators", [])
-    for coordinator in polaris_coordinators:
+    elif device_type == "polaris":
         zones = coordinator.data.zones if coordinator.data else []
-        if verbose:
-            _LOGGER.debug(
-                "[Polaris][%s] Setting up sensors: %d zone(s) found",
-                coordinator.device_name, len(zones),
-            )
+        entities = [PolarisOperatingModeSensor(coordinator)]
         for zone in zones:
-            if verbose:
-                _LOGGER.debug(
-                    "[Polaris][%s] Adding temp+humidity sensors for zone '%s' (id=%d, "
-                    "current_temp=%s, humidity=%s)",
-                    coordinator.device_name, zone.name, zone.zone_id,
-                    zone.current_temp, zone.humidity,
-                )
-            sensors.append(PolarisZoneTemperatureSensor(coordinator, zone.zone_id))
-            sensors.append(PolarisZoneHumiditySensor(coordinator, zone.zone_id))
-        # Device-level operating mode sensor
-        sensors.append(PolarisOperatingModeSensor(coordinator))
-        if verbose:
-            _LOGGER.debug(
-                "[Polaris][%s] Adding operating mode sensor (current mode=%s, is_off=%s, is_cooling=%s)",
-                coordinator.device_name,
-                coordinator.data.device.cooling_mode_name if coordinator.data else "unknown",
-                coordinator.data.device.is_off if coordinator.data else "unknown",
-                coordinator.data.device.is_cooling if coordinator.data else "unknown",
-            )
-
-    async_add_entities(sensors)
+            entities.append(PolarisZoneTemperatureSensor(coordinator, zone.zone_id))
+            entities.append(PolarisZoneHumiditySensor(coordinator, zone.zone_id))
+        async_add_entities(entities)
 
 
 class PicoTemperatureSensor(BaseEntity, SensorEntity):
@@ -95,7 +65,7 @@ class PicoTemperatureSensor(BaseEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator, device_index)
 
-        self._attr_unique_id = f"{DOMAIN}_temperature_{coordinator.pico_ip.replace('.', '_')}"
+        self._attr_unique_id = f"{DOMAIN}_temperature_{coordinator.family_name}"
         self._attr_name = "Temperature"
 
     @property
@@ -119,7 +89,7 @@ class PicoHumiditySensor(BaseEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator, device_index)
 
-        self._attr_unique_id = f"{DOMAIN}_humidity_{coordinator.pico_ip.replace('.', '_')}"
+        self._attr_unique_id = f"{DOMAIN}_humidity_{coordinator.family_name}"
         self._attr_name = "Humidity"
 
     @property
@@ -143,7 +113,7 @@ class PicoAirQualitySensor(BaseEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator, device_index)
 
-        self._attr_unique_id = f"{DOMAIN}_air_quality_{coordinator.pico_ip.replace('.', '_')}"
+        self._attr_unique_id = f"{DOMAIN}_air_quality_{coordinator.family_name}"
         self._attr_name = "CO2"
 
     @property
@@ -167,7 +137,7 @@ class PicoTVOCSensor(BaseEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator, device_index)
 
-        self._attr_unique_id = f"{DOMAIN}_tvoc_{coordinator.pico_ip.replace('.', '_')}"
+        self._attr_unique_id = f"{DOMAIN}_tvoc_{coordinator.family_name}"
         self._attr_name = "TVOC"
 
     @property
@@ -217,7 +187,7 @@ class PicoECO2Sensor(BaseEntity, SensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator, device_index)
 
-        self._attr_unique_id = f"{DOMAIN}_eco2_{coordinator.pico_ip.replace('.', '_')}"
+        self._attr_unique_id = f"{DOMAIN}_eco2_{coordinator.family_name}"
         self._attr_name = "eCO2"
 
     @property
@@ -305,7 +275,7 @@ class PolarisZoneTemperatureSensor(CoordinatorEntity, SensorEntity):
             "identifiers": {(DOMAIN, f"polaris_{self._coordinator.serial}")},
             "name": dev.name if dev else f"Polaris {self._coordinator.serial}",
             "manufacturer": "Tecnosystemi",
-            "model": "Polaris 5",
+            "model": "Polaris 5X",
         }
 
     @callback
@@ -359,7 +329,7 @@ class PolarisZoneHumiditySensor(CoordinatorEntity, SensorEntity):
             "identifiers": {(DOMAIN, f"polaris_{self._coordinator.serial}")},
             "name": dev.name if dev else f"Polaris {self._coordinator.serial}",
             "manufacturer": "Tecnosystemi",
-            "model": "Polaris 5",
+            "model": "Polaris 5X",
         }
 
     @callback
@@ -406,7 +376,7 @@ class PolarisOperatingModeSensor(CoordinatorEntity, SensorEntity):
             "identifiers": {(DOMAIN, f"polaris_{self._coordinator.serial}")},
             "name": dev.name if dev else f"Polaris {self._coordinator.serial}",
             "manufacturer": "Tecnosystemi",
-            "model": "Polaris 5",
+            "model": "Polaris 5X",
             "sw_version": dev.fw_ver if dev else None,
         }
 

@@ -19,12 +19,12 @@
         "data": {
           "ip": "IP Address",
           "pin": "PIN",
-          "name": "Device Name"
+          "name": "Device Name (optional)"
         }
       },
       "pico_scan": {
         "title": "Scan for Pico Devices",
-        "description": "The scan probes every host in the subnet using the provided PIN. Only devices sharing this PIN will be found.",
+        "description": "The scan will probe every host in the subnet using the provided PIN. Only devices sharing this PIN will be found.",
         "data": {
           "pin": "PIN",
           "subnet": "Subnet (CIDR, e.g. 192.168.1.0/24)"
@@ -86,73 +86,10 @@
     "error": {
       "cannot_connect": "Unable to connect to the device. Check the IP address and PIN.",
       "discovery_failed": "Auto-discovery scan failed. Check your network settings.",
-      "no_devices_found": "No new devices found on the network. Check input subnet. All discovered devices may already be configured."
+      "no_devices_found": "No new devices found on the network. All discovered devices may already be configured."
     },
     "abort": {
       "already_configured": "This device is already configured."
-    }
-  },
-  "errors": {
-    "unsupported_mode": "Mode {mode} does not support speed control"
-  },
-  "entity": {
-    "fan": {
-      "pico": {
-        "state_attributes": {
-          "preset_mode": {
-            "state": {
-              "heat_recovery": "Heat Recovery",
-              "extraction": "Extraction",
-              "immission": "Immission",
-              "humidity_recovery": "Humidity - Recovery",
-              "humidity_extraction": "Humidity - Extraction",
-              "comfort_summer": "Comfort Summer",
-              "comfort_winter": "Comfort Winter",
-              "co2_recovery": "CO₂ - Recovery",
-              "co2_extraction": "CO₂ - Extraction",
-              "humidity_co2_recovery": "Humidity CO₂ - Recovery",
-              "humidity_co2_extraction": "Humidity CO₂ - Extraction",
-              "natural_ventilation": "Natural Ventilation"
-            }
-          }
-        }
-      }
-    },
-    "select": {
-      "preset_mode": {
-        "name": "Preset Mode",
-        "state": {
-          "heat_recovery": "Heat Recovery",
-          "extraction": "Extraction",
-          "immission": "Immission",
-          "humidity_recovery": "Humidity - Recovery",
-          "humidity_extraction": "Humidity - Extraction",
-          "comfort_summer": "Comfort Summer",
-          "comfort_winter": "Comfort Winter",
-          "co2_recovery": "CO₂ - Recovery",
-          "co2_extraction": "CO₂ - Extraction",
-          "humidity_co2_recovery": "Humidity CO₂ - Recovery",
-          "humidity_co2_extraction": "Humidity CO₂ - Extraction",
-          "natural_ventilation": "Natural Ventilation"
-        }
-      }
-    },
-    "sensor": {
-      "polaris_operating_mode": {
-        "name": "Operating Mode",
-        "state": {
-          "heating": "Heating",
-          "cooling": "Cooling",
-          "dehumidification": "Dehumidification",
-          "ventilation": "Ventilation",
-          "unknown": "Unknown"
-        }
-      }
-    },
-    "binary_sensor": {
-      "polaris_device_error": {
-        "name": "Device Error"
-      }
     }
   },
   "selector": {

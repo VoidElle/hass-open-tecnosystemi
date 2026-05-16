@@ -1,16 +1,17 @@
-"""Climate platform for Polaris 5 devices (local TCP port 1235).
+"""Climate platform for Polaris 5X devices (local TCP port 1235).
 
 Two entity types:
-- PolarisMainClimate: one per CU — controls global machine on/off, heat/cool mode,
+- PolarisMainClimate: one per CU - controls global machine on/off, heat/cool mode,
   and cooling sub-mode (Raffrescamento / Deumidificazione / Ventilazione).
-- PolarisZoneClimate: one per zone — controls individual zone on/off and target temp.
-  Zone on/off is independent from the machine (upd_zona, not upd_cu).
+- PolarisZoneClimate: one per zone - controls individual zone on/off and target temp.
+  Zone on/off is independent of the machine (upd_zona, not upd_cu).
 """
 from __future__ import annotations
 
 import logging
 from typing import Any
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.components.climate import (
     ClimateEntity,
     ClimateEntityFeature,
@@ -23,12 +24,12 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+
+from open_polaris_local_api import PolarisZone
 
 from .const import DOMAIN
 from .polaris_coordinator import PolarisCoordinator
-from .polaris_api.models import PolarisZone
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,55 +44,35 @@ _HVAC_TO_CU: dict[HVACMode, tuple[bool, int]] = {
 _CU_TO_HVAC: dict[tuple[bool, int], HVACMode] = {v: k for k, v in _HVAC_TO_CU.items()}
 
 
-async def async_setup_platform(
+async def async_setup_entry(
     hass: HomeAssistant,
-    config: ConfigType,
+    entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
-    discovery_info: DiscoveryInfoType | None = None,
 ) -> None:
-    """Set up Polaris climate entities from discovery."""
-    if DOMAIN not in hass.data:
+    """Set up Polaris climate entities from a config entry."""
+    if entry.data.get("device_type") != "polaris":
         return
 
-    polaris_coordinators: list[PolarisCoordinator] = hass.data[DOMAIN].get("polaris_coordinators", [])
-    verbose = hass.data[DOMAIN].get("config", {}).get("verbose", False)
+    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    verbose = entry.data.get("verbose", False)
+    zones = coordinator.data.zones if coordinator.data else []
 
-    entities: list[ClimateEntity] = []
-
-    for coordinator in polaris_coordinators:
-        zones = coordinator.data.zones if coordinator.data else []
-
-        # One machine-level entity per CU
-        entities.append(PolarisMainClimate(coordinator))
-        _LOGGER.debug(
-            "Adding Polaris main climate: %s",
-            coordinator.device_name,
-        )
-
-        # One zone-level entity per zone
-        for zone in zones:
-            entities.append(PolarisZoneClimate(coordinator, zone.zone_id))
+    entities: list[ClimateEntity] = [PolarisMainClimate(coordinator)]
+    for zone in zones:
+        entities.append(PolarisZoneClimate(coordinator, zone.zone_id))
+        if verbose:
             _LOGGER.debug(
-                "Adding Polaris zone climate: %s (zone_id=%d)",
-                zone.name, zone.zone_id,
+                "[Polaris][%s] Adding zone climate: '%s' (id=%d)",
+                coordinator.device_name, zone.name, zone.zone_id,
             )
-            if verbose:
-                _LOGGER.debug(
-                    "[Polaris][%s] Zone '%s' (id=%d): is_off=%s, set_temp=%s, "
-                    "current_temp=%s, fancoil=%s, serranda=%s",
-                    coordinator.device_name, zone.name, zone.zone_id,
-                    zone.is_off, zone.set_temp, zone.current_temp,
-                    zone.fancoil, zone.serranda,
-                )
 
-    if entities:
-        async_add_entities(entities)
-        _LOGGER.info(
-            "Added %d Polaris climate entities (%d CU + %d zones)",
-            len(entities),
-            sum(1 for e in entities if isinstance(e, PolarisMainClimate)),
-            sum(1 for e in entities if isinstance(e, PolarisZoneClimate)),
-        )
+    async_add_entities(entities)
+    _LOGGER.info(
+        "Added %d Polaris climate entities (%d CU + %d zones)",
+        len(entities),
+        sum(1 for e in entities if isinstance(e, PolarisMainClimate)),
+        sum(1 for e in entities if isinstance(e, PolarisZoneClimate)),
+    )
 
 
 # ─── Machine-level entity ────────────────────────────────────────────────────
@@ -100,11 +81,11 @@ class PolarisMainClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
     """Climate entity for the Polaris CU (global machine).
 
     Controls:
-    - OFF    → upd_cu is_off=1
-    - HEAT   → upd_cu is_off=0, is_cool=0, cool_mod=0  (Riscaldamento)
-    - COOL   → upd_cu is_off=0, is_cool=1, cool_mod=1  (Raffrescamento)
-    - DRY    → upd_cu is_off=0, is_cool=1, cool_mod=2  (Deumidificazione)
-    - FAN_ONLY → upd_cu is_off=0, is_cool=1, cool_mod=3 (Ventilazione)
+    - OFF    -> upd_cu is_off=1
+    - HEAT   -> upd_cu is_off=0, is_cool=0, cool_mod=0  (Riscaldamento)
+    - COOL   -> upd_cu is_off=0, is_cool=1, cool_mod=1  (Raffrescamento)
+    - DRY    -> upd_cu is_off=0, is_cool=1, cool_mod=2  (Deumidificazione)
+    - FAN_ONLY -> upd_cu is_off=0, is_cool=1, cool_mod=3 (Ventilazione)
     """
 
     _attr_has_entity_name = True
@@ -142,7 +123,7 @@ class PolarisMainClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
             "identifiers": {(DOMAIN, f"polaris_{self._coordinator.serial}")},
             "name": dev.name if dev else f"Polaris {self._coordinator.serial}",
             "manufacturer": "Tecnosystemi",
-            "model": "Polaris 5",
+            "model": "Polaris 5X",
             "sw_version": dev.fw_ver if dev else None,
         }
 
@@ -176,6 +157,7 @@ class PolarisMainClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
         return float(dev.t_can) if dev and dev.t_can is not None else None
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
+        _LOGGER.debug("[%s] set_hvac_mode: %s", self._coordinator.device_name, hvac_mode)
         if hvac_mode == HVACMode.OFF:
             await self._coordinator.async_turn_off()
         else:
@@ -187,11 +169,12 @@ class PolarisMainClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
             )
             await self._coordinator.async_request_refresh()
 
-
     async def async_turn_on(self) -> None:
+        _LOGGER.debug("[%s] turn_on", self._coordinator.device_name)
         await self._coordinator.async_turn_on()
 
     async def async_turn_off(self) -> None:
+        _LOGGER.debug("[%s] turn_off", self._coordinator.device_name)
         await self._coordinator.async_turn_off()
 
     @callback
@@ -205,10 +188,10 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
     """Climate entity for a single Polaris zone.
 
     Controls:
-    - Zone on/off independently (upd_zona is_off) — does NOT affect other zones
+    - Zone on/off independently (upd_zona is_off) - does NOT affect other zones
     - Target temperature (upd_zona t_set)
 
-    Mode/preset are read-only here (reflect CU state) — change them via the
+    Mode/preset are read-only here (reflect CU state) - change them via the
     PolarisMainClimate entity.
     """
 
@@ -223,7 +206,7 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
         | ClimateEntityFeature.TURN_OFF
     )
     # OFF = zone off, AUTO = zone active (machine decides heat/cool/vent).
-    # Zone entities cannot change machine mode — use PolarisMainClimate for that.
+    # Zone entities cannot change machine mode - use PolarisMainClimate for that.
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.AUTO]
 
     def __init__(self, coordinator: PolarisCoordinator, zone_id: int) -> None:
@@ -261,7 +244,7 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
             "identifiers": {(DOMAIN, f"polaris_{self._coordinator.serial}")},
             "name": dev.name if dev else f"Polaris {self._coordinator.serial}",
             "manufacturer": "Tecnosystemi",
-            "model": "Polaris 5",
+            "model": "Polaris 5X",
             "sw_version": dev.fw_ver if dev else None,
         }
 
@@ -301,22 +284,26 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """OFF = turn zone off (upd_zona). AUTO = turn zone on (upd_zona)."""
+        _LOGGER.debug("[%s] zone %d set_hvac_mode: %s", self._coordinator.device_name, self._zone_id, hvac_mode)
         if hvac_mode == HVACMode.OFF:
             await self._coordinator.async_turn_zone_off(self._zone_id)
         else:
             await self._coordinator.async_turn_zone_on(self._zone_id)
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
-        temperature = kwargs.get(ATTR_TEMPERATURE)
+        temperature: float | None = kwargs.get(ATTR_TEMPERATURE)
         if temperature is not None:
+            _LOGGER.debug("[%s] zone %d set_temperature: %.1f", self._coordinator.device_name, self._zone_id, temperature)
             await self._coordinator.async_set_zone_temp(self._zone_id, temperature)
 
     async def async_turn_on(self) -> None:
         """Turn this zone on (upd_zona is_off=0). Other zones unaffected."""
+        _LOGGER.debug("[%s] zone %d turn_on", self._coordinator.device_name, self._zone_id)
         await self._coordinator.async_turn_zone_on(self._zone_id)
 
     async def async_turn_off(self) -> None:
         """Turn this zone off (upd_zona is_off=1). Other zones unaffected."""
+        _LOGGER.debug("[%s] zone %d turn_off", self._coordinator.device_name, self._zone_id)
         await self._coordinator.async_turn_zone_off(self._zone_id)
 
     @callback

@@ -3,25 +3,29 @@
 Supports two device families:
   - Pico: Ventilation/air quality units (local UDP, ports 40069/40070)
   - Polaris 5: HVAC zone controllers (local TCP, port 1235)
+
+Devices are added via the UI (Settings -> Integrations -> Add Integration).
 """
 from __future__ import annotations
 
 import asyncio
 import logging
-import voluptuous as vol
+import re
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import config_validation as cv, discovery
-from homeassistant.helpers.typing import ConfigType
+from homeassistant.exceptions import ConfigEntryNotReady
+
+from open_polaris_local_api import PolarisLocalClient
 
 from .const import DOMAIN
 from .coordinator import MainCoordinator
 from .pico_manager import PicoClientManager
+from .polaris_coordinator import PolarisCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
-# Platforms for Pico devices
 PICO_PLATFORMS: list[Platform] = [
     Platform.FAN,
     Platform.SWITCH,
@@ -31,306 +35,156 @@ PICO_PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
 ]
 
-# Platforms for Polaris devices
 POLARIS_PLATFORMS: list[Platform] = [
     Platform.CLIMATE,
     Platform.SENSOR,
     Platform.BINARY_SENSOR,
 ]
 
-# Define the Pico device schema (local UDP)
-PICO_DEVICE_SCHEMA = vol.Schema({
-    vol.Required("ip"): cv.string,
-    vol.Required("pin"): cv.string,
-    vol.Optional("name"): cv.string,
-})
 
-# Define the Polaris device schema (local TCP port 1235)
-POLARIS_DEVICE_SCHEMA = vol.Schema({
-    vol.Required("ip"): cv.string,
-    vol.Required("pin"): cv.string,
-    vol.Optional("name"): cv.string,
-    # scan_interval: how often (seconds) to poll the device.
-    # Lower values give faster updates but may disrupt the device's
-    # persistent cloud connection (causing the official app to show
-    # "Stato sistema non sincronizzato"). Default: 30s is a safe balance.
-    vol.Optional("scan_interval", default=30): vol.All(int, vol.Range(min=10)),
-})
-
-# Define the YAML configuration schema
-CONFIG_SCHEMA = vol.Schema(
-    {
-        DOMAIN: vol.Schema({
-            vol.Optional("devices", default=[]): vol.All(cv.ensure_list, [PICO_DEVICE_SCHEMA]),
-            vol.Optional("polaris_devices", default=[]): vol.All(cv.ensure_list, [POLARIS_DEVICE_SCHEMA]),
-            vol.Optional("local_port", default=40069): cv.port,
-            vol.Optional("verbose", default=False): cv.boolean,
-        })
-    },
-    extra=vol.ALLOW_EXTRA,
-)
-
-
-async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Set up the Open Pico integration from YAML configuration."""
-
-    if DOMAIN not in config:
-        return True
-
-    domain_config = config[DOMAIN]
-    pico_devices = domain_config.get("devices", [])
-    polaris_devices = domain_config.get("polaris_devices", [])
-    local_port = domain_config.get("local_port", 40069)
-    verbose = domain_config.get("verbose", False)
-
-    _LOGGER.info(
-        "Setting up %s with %d Pico device(s) and %d Polaris device(s)",
-        DOMAIN, len(pico_devices), len(polaris_devices),
-    )
-
-    # Initialize hass.data for this domain
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up Open Pico from a UI config entry (one device per entry)."""
     hass.data.setdefault(DOMAIN, {})
-    hass.data[DOMAIN]["coordinators"] = []
-    hass.data[DOMAIN]["polaris_coordinators"] = []
-    hass.data[DOMAIN]["config"] = domain_config
 
-    platforms_needed: set[Platform] = set()
+    device_type = entry.data.get("device_type", "pico")
 
-    # ─── Set up Pico devices (local UDP) ──────────────────────────────
-    if pico_devices:
-        successful_pico = await _setup_pico_devices(
-            hass, pico_devices, local_port, verbose
-        )
-        if successful_pico > 0:
-            platforms_needed.update(PICO_PLATFORMS)
-
-    # ─── Set up Polaris devices (local TCP) ───────────────────────────
-    if polaris_devices:
-        successful_polaris = await _setup_polaris_devices(
-            hass, polaris_devices, verbose
-        )
-        if successful_polaris > 0:
-            platforms_needed.update(POLARIS_PLATFORMS)
-
-    # Check if we have anything
-    total = len(hass.data[DOMAIN]["coordinators"]) + len(hass.data[DOMAIN]["polaris_coordinators"])
-    if total == 0:
-        _LOGGER.error("No devices were successfully set up")
+    if device_type == "pico":
+        coordinator = await _setup_pico_entry(hass, entry)
+        platforms = PICO_PLATFORMS
+    elif device_type == "polaris":
+        coordinator = await _setup_polaris_entry(hass, entry)
+        platforms = POLARIS_PLATFORMS
+    else:
+        _LOGGER.error("Unknown device_type '%s' in config entry %s", device_type, entry.entry_id)
         return False
 
-    # Load platforms using discovery
-    for platform in platforms_needed:
-        hass.async_create_task(
-            discovery.async_load_platform(hass, platform, DOMAIN, {}, config)
-        )
+    hass.data[DOMAIN][entry.entry_id] = {
+        "coordinator": coordinator,
+        "device_type": device_type,
+    }
 
-    _LOGGER.info("Open Pico integration setup complete: %d total device(s)", total)
+    await hass.config_entries.async_forward_entry_setups(entry, platforms)
+    _LOGGER.info("Config entry set up: %s (%s)", entry.title, device_type)
     return True
 
 
-async def _setup_pico_devices(
-    hass: HomeAssistant,
-    devices: list[dict],
-    local_port: int,
-    verbose: bool,
-) -> int:
-    """Set up Pico devices with shared UDP transport. Returns count of successful devices."""
+async def _setup_pico_entry(hass: HomeAssistant, entry: ConfigEntry) -> MainCoordinator:
+    """Set up one Pico device from a config entry."""
+    ip: str = entry.data["ip"]
+    pin: str = entry.data["pin"]
+    name: str = entry.data["name"]
+    local_port: int = entry.data.get("local_port", 40069)
+    verbose: bool = entry.data.get("verbose", False)
+    name_slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
-    manager = PicoClientManager(local_port=local_port, verbose=verbose)
+    # PicoClientManager is a singleton shared across all Pico config entries
+    if "pico_manager" not in hass.data[DOMAIN]:
+        manager = PicoClientManager(local_port=local_port, verbose=verbose)
+        try:
+            await manager.initialize()
+        except Exception as err:
+            raise ConfigEntryNotReady(f"Failed to initialize shared UDP transport: {err}") from err
+        hass.data[DOMAIN]["pico_manager"] = manager
+    else:
+        manager: PicoClientManager = hass.data[DOMAIN]["pico_manager"]
+
+    device_id = f"pico_{name_slug}"
+    client = manager.create_client(
+        ip=ip, pin=pin, device_id=device_id,
+        timeout=15, retry_attempts=3, retry_delay=2.0,
+    )
 
     try:
-        await manager.initialize()
-        hass.data[DOMAIN]["manager"] = manager
-        _LOGGER.info("Shared transport initialized on port %d", local_port)
+        await asyncio.wait_for(client.connect(), timeout=30)
     except Exception as err:
-        _LOGGER.error("Failed to initialize shared transport: %s", err, exc_info=True)
-        return 0
+        raise ConfigEntryNotReady(f"Cannot connect to Pico {ip}: {err}") from err
 
-    successful = 0
-    for idx, device_config in enumerate(devices):
-        pico_ip = device_config.get("ip")
-        pin = device_config.get("pin")
-        device_name = device_config.get("name", f"Pico Device {idx + 1}")
+    coordinator = MainCoordinator(hass, client, name)
 
-        _LOGGER.debug("Setting up Pico device '%s': ip=%s", device_name, pico_ip)
+    try:
+        async with asyncio.timeout(30):
+            await coordinator.async_refresh()
+    except Exception as err:
+        await client.disconnect()
+        raise ConfigEntryNotReady(f"Initial refresh failed for Pico {ip}: {err}") from err
 
-        try:
-            device_id = f"pico_{pico_ip.replace('.', '_')}"
-            client = manager.create_client(
-                ip=pico_ip, pin=pin, device_id=device_id,
-                timeout=15, retry_attempts=3, retry_delay=2.0,
-            )
+    if not coordinator.last_update_success:
+        await client.disconnect()
+        raise ConfigEntryNotReady(
+            f"Initial refresh failed for Pico {ip}: {coordinator.last_exception}"
+        )
 
-            await client.connect()
-            coordinator = MainCoordinator(hass, client, device_name)
-
-            try:
-                async with asyncio.timeout(30):
-                    await coordinator.async_refresh()
-                    if not coordinator.last_update_success:
-                        raise Exception(f"Initial refresh failed: {coordinator.last_exception}")
-            except asyncio.TimeoutError:
-                _LOGGER.error("Timeout during initial refresh for Pico '%s' (%s)", device_name, pico_ip)
-                await client.disconnect()
-                continue
-            except Exception as err:
-                _LOGGER.error("Initial refresh failed for Pico '%s' (%s): %s", device_name, pico_ip, err)
-                await client.disconnect()
-                continue
-
-            if not coordinator.data:
-                _LOGGER.error("No data from Pico '%s' (%s)", device_name, pico_ip)
-                await client.disconnect()
-                continue
-
-            hass.data[DOMAIN]["coordinators"].append(coordinator)
-            successful += 1
-
-            _LOGGER.info(
-                "Pico '%s' (%s): Mode=%s, Temp=%.1f°C, Humidity=%.1f%%",
-                device_name, pico_ip,
-                coordinator.data.operating.mode.name,
-                coordinator.data.sensors.temperature,
-                coordinator.data.sensors.humidity,
-            )
-
-        except Exception as err:
-            _LOGGER.error("Error setting up Pico '%s' (%s): %s", device_name, pico_ip, err, exc_info=True)
-            continue
-
-    return successful
+    return coordinator
 
 
-async def _setup_polaris_devices(
-    hass: HomeAssistant,
-    devices: list[dict],
-    verbose: bool,
-) -> int:
-    """Set up Polaris devices with local TCP transport (port 1235).
+async def _setup_polaris_entry(hass: HomeAssistant, entry: ConfigEntry) -> PolarisCoordinator:
+    """Set up one Polaris device from a config entry."""
+    ip: str = entry.data["ip"]
+    pin: str = entry.data["pin"]
+    name: str = entry.data["name"]
+    scan_interval: int = entry.data.get("scan_interval", 30)
+    verbose: bool = entry.data.get("verbose", False)
+    name_slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
-    Each entry requires 'ip' and 'pin'.
-    """
-    from .polaris_api.polaris_client import PolarisLocalClient
-    from .polaris_coordinator import PolarisCoordinator
+    device_id = f"polaris_{name_slug}"
+    client = PolarisLocalClient(
+        ip=ip, pin=pin, device_id=device_id,
+        port=1235, timeout=15, retry_attempts=3, retry_delay=2.0, verbose=verbose,
+    )
 
-    successful = 0
+    try:
+        await asyncio.wait_for(client.connect(), timeout=30)
+    except Exception as err:
+        raise ConfigEntryNotReady(f"Cannot connect to Polaris {ip}: {err}") from err
 
-    for idx, device_config in enumerate(devices):
-        polaris_ip = device_config.get("ip")
-        pin = device_config.get("pin")
-        device_name = device_config.get("name", f"Polaris Device {idx + 1}")
-        scan_interval = device_config.get("scan_interval", 30)
+    coordinator = PolarisCoordinator(hass, client, name, scan_interval=scan_interval)
 
-        _LOGGER.debug("Setting up Polaris device '%s': ip=%s", device_name, polaris_ip)
+    try:
+        async with asyncio.timeout(30):
+            await coordinator.async_refresh()
+    except Exception as err:
+        await client.close()
+        raise ConfigEntryNotReady(f"Initial refresh failed for Polaris {ip}: {err}") from err
 
-        try:
-            device_id = f"polaris_{polaris_ip.replace('.', '_')}"
+    if not coordinator.last_update_success:
+        await client.close()
+        raise ConfigEntryNotReady(
+            f"Initial refresh failed for Polaris {ip}: {coordinator.last_exception}"
+        )
 
-            client = PolarisLocalClient(
-                ip=polaris_ip,
-                pin=pin,
-                device_id=device_id,
-                port=1235,
-                timeout=15,
-                retry_attempts=3,
-                retry_delay=2.0,
-                verbose=verbose,
-            )
-
-            # connect() does the initial async_update() internally,
-            # so device + zones are already populated after this call.
-            try:
-                async with asyncio.timeout(30):
-                    await client.connect()
-                    device = client.device
-                    zones = client.zones
-            except asyncio.TimeoutError:
-                _LOGGER.error(
-                    "Timeout connecting to Polaris '%s' (%s)",
-                    device_name, polaris_ip,
-                )
-                continue
-            except Exception as err:
-                _LOGGER.error(
-                    "Failed to connect to Polaris '%s' (%s): %s",
-                    device_name, polaris_ip, err,
-                )
-                continue
-
-            # Use the name from the device if not explicitly set in config
-            if device.name and device.name != "Unknown" and "name" not in device_config:
-                device_name = device.name
-
-            coordinator = PolarisCoordinator(hass, client, device_name, scan_interval=scan_interval)
-
-            # Initial refresh through the coordinator
-            try:
-                async with asyncio.timeout(30):
-                    await coordinator.async_refresh()
-                    if not coordinator.last_update_success:
-                        raise Exception(
-                            f"Coordinator refresh failed: {coordinator.last_exception}"
-                        )
-            except Exception as err:
-                _LOGGER.error(
-                    "Coordinator refresh failed for Polaris '%s': %s",
-                    device_name, err,
-                )
-                await client.disconnect()
-                continue
-
-            hass.data[DOMAIN]["polaris_coordinators"].append(coordinator)
-            successful += 1
-
-            _LOGGER.info(
-                "Polaris '%s' (%s): on=%s, mode=%s, zones=%d",
-                device_name, polaris_ip,
-                device.is_on, device.cooling_mode_name, len(zones),
-            )
-
-        except Exception as err:
-            _LOGGER.error(
-                "Error setting up Polaris '%s': %s",
-                device_name, err, exc_info=True,
-            )
-            continue
-
-    return successful
+    return coordinator
 
 
-async def async_unload_entry(hass: HomeAssistant) -> bool:
-    """Unload the integration."""
-    _LOGGER.info("Unloading %s integration", DOMAIN)
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry."""
+    device_type = entry.data.get("device_type", "pico")
+    platforms = PICO_PLATFORMS if device_type == "pico" else POLARIS_PLATFORMS
 
-    # Shutdown Pico coordinators
-    if DOMAIN in hass.data and "coordinators" in hass.data[DOMAIN]:
-        for coordinator in hass.data[DOMAIN]["coordinators"]:
+    unloaded = await hass.config_entries.async_unload_platforms(entry, platforms)
+
+    if unloaded:
+        entry_data = hass.data[DOMAIN].pop(entry.entry_id, {})
+        coordinator = entry_data.get("coordinator")
+        if coordinator:
             try:
                 await coordinator.async_shutdown()
             except Exception as err:
-                _LOGGER.error("Error shutting down Pico coordinator: %s", err)
+                _LOGGER.error("Error shutting down coordinator for %s: %s", entry.title, err)
 
-    # Shutdown Polaris coordinators
-    if DOMAIN in hass.data and "polaris_coordinators" in hass.data[DOMAIN]:
-        for coordinator in hass.data[DOMAIN]["polaris_coordinators"]:
-            try:
-                await coordinator.async_shutdown()
-            except Exception as err:
-                _LOGGER.error("Error shutting down Polaris coordinator: %s", err)
+        if device_type == "pico":
+            remaining_pico = any(
+                e.data.get("device_type") == "pico"
+                for e in hass.config_entries.async_entries(DOMAIN)
+                if e.entry_id != entry.entry_id
+            )
+            if not remaining_pico and "pico_manager" in hass.data.get(DOMAIN, {}):
+                try:
+                    await hass.data[DOMAIN]["pico_manager"].shutdown()
+                except Exception as err:
+                    _LOGGER.error("Error shutting down PicoClientManager: %s", err)
+                hass.data[DOMAIN].pop("pico_manager", None)
 
-    # Shutdown the shared Pico manager
-    if DOMAIN in hass.data and "manager" in hass.data[DOMAIN]:
-        try:
-            await hass.data[DOMAIN]["manager"].shutdown()
-        except Exception as err:
-            _LOGGER.error("Error shutting down manager: %s", err)
+    _LOGGER.info("Config entry unloaded: %s", entry.title)
+    return unloaded
 
-    # Remove services
-    for service in hass.services.async_services_for_domain(DOMAIN):
-        hass.services.async_remove(DOMAIN, service)
 
-    if DOMAIN in hass.data:
-        hass.data.pop(DOMAIN)
-
-    _LOGGER.info("Successfully unloaded %s", DOMAIN)
-    return True

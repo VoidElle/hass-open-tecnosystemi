@@ -1,13 +1,13 @@
 """Binary Sensor platform for Open Pico integration."""
 import logging
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
     BinarySensorDeviceClass,
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
@@ -17,34 +17,23 @@ from .coordinator import MainCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_platform(
+async def async_setup_entry(
     hass: HomeAssistant,
-    config: ConfigType,
+    entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
-    discovery_info=None,
-):
-    """Set up the Binary Sensor platform from YAML."""
-    if discovery_info is None:
-        return
+) -> None:
+    """Set up binary sensors from a config entry (Pico or Polaris)."""
+    device_type = entry.data.get("device_type")
+    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
 
-    sensors = []
-
-    # ─── Pico sensors ─────────────────────────────────────────────
-    coordinators = hass.data[DOMAIN].get("coordinators", [])
-    for idx, coordinator in enumerate(coordinators):
-        sensors.append(PicoMaintenanceBinarySensor(coordinator, idx))
-
-    # ─── Polaris sensors (device error + per-zone error) ──────────
-    from .polaris_coordinator import PolarisCoordinator
-    polaris_coordinators = hass.data[DOMAIN].get("polaris_coordinators", [])
-    for coordinator in polaris_coordinators:
-        sensors.append(PolarisDeviceErrorBinarySensor(coordinator))
+    if device_type == "pico":
+        async_add_entities([PicoMaintenanceBinarySensor(coordinator, 0)])
+    elif device_type == "polaris":
         zones = coordinator.data.zones if coordinator.data else []
+        entities = [PolarisDeviceErrorBinarySensor(coordinator)]
         for zone in zones:
-            sensors.append(PolarisZoneErrorBinarySensor(coordinator, zone.zone_id))
-
-    async_add_entities(sensors)
-    _LOGGER.info("Added %d binary sensor(s)", len(sensors))
+            entities.append(PolarisZoneErrorBinarySensor(coordinator, zone.zone_id))
+        async_add_entities(entities)
 
 
 class PicoMaintenanceBinarySensor(BaseEntity, BinarySensorEntity):
@@ -58,7 +47,7 @@ class PicoMaintenanceBinarySensor(BaseEntity, BinarySensorEntity):
         """Initialize the sensor."""
         super().__init__(coordinator, device_index)
 
-        self._attr_unique_id = f"{DOMAIN}_filter_maintenance_{coordinator.pico_ip.replace('.', '_')}"
+        self._attr_unique_id = f"{DOMAIN}_filter_maintenance_{coordinator.family_name}"
         self._attr_name = "Filter Maintenance Required"
 
     @property
@@ -113,7 +102,7 @@ class PolarisDeviceErrorBinarySensor(CoordinatorEntity, BinarySensorEntity):
             "identifiers": {(DOMAIN, f"polaris_{self._coordinator.serial}")},
             "name": dev.name if dev else f"Polaris {self._coordinator.serial}",
             "manufacturer": "Tecnosystemi",
-            "model": "Polaris 5",
+            "model": "Polaris 5X",
         }
 
     @callback
@@ -169,7 +158,7 @@ class PolarisZoneErrorBinarySensor(CoordinatorEntity, BinarySensorEntity):
             "identifiers": {(DOMAIN, f"polaris_{self._coordinator.serial}")},
             "name": dev.name if dev else f"Polaris {self._coordinator.serial}",
             "manufacturer": "Tecnosystemi",
-            "model": "Polaris 5",
+            "model": "Polaris 5X",
         }
 
     @callback
