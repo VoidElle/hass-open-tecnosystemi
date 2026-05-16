@@ -4,6 +4,7 @@ Supports both Pico device sensors and Polaris zone sensors.
 """
 import logging
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.components.sensor import (
     SensorEntity,
     SensorDeviceClass,
@@ -16,7 +17,6 @@ from homeassistant.const import (
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, POLARIS_COOLING_MODES
@@ -26,62 +26,30 @@ from .coordinator import MainCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_platform(
-        hass: HomeAssistant,
-        _config: ConfigType,
-        async_add_entities: AddEntitiesCallback,
-        _discovery_info=None,
-):
-    """Set up the Sensor platform from YAML."""
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddEntitiesCallback,
+) -> None:
+    """Set up sensors from a config entry (Pico or Polaris)."""
+    device_type = entry.data.get("device_type")
+    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
 
-    sensors = []
-
-    # ─── Pico sensors ─────────────────────────────────────────────
-    coordinators = hass.data[DOMAIN].get("coordinators", [])
-    _LOGGER.debug("Setting up sensor platform: %d Pico coordinator(s)", len(coordinators))
-    for idx, coordinator in enumerate(coordinators):
-        sensors.extend([
-            PicoTemperatureSensor(coordinator, idx),
-            PicoHumiditySensor(coordinator, idx),
-            PicoAirQualitySensor(coordinator, idx),
-            PicoTVOCSensor(coordinator, idx),
-            PicoECO2Sensor(coordinator, idx),
+    if device_type == "pico":
+        async_add_entities([
+            PicoTemperatureSensor(coordinator, 0),
+            PicoHumiditySensor(coordinator, 0),
+            PicoAirQualitySensor(coordinator, 0),
+            PicoTVOCSensor(coordinator, 0),
+            PicoECO2Sensor(coordinator, 0),
         ])
-
-    # ─── Polaris sensors (per-zone temp/humidity + device mode) ───
-    verbose = hass.data[DOMAIN].get("config", {}).get("verbose", False)
-    polaris_coordinators = hass.data[DOMAIN].get("polaris_coordinators", [])
-    _LOGGER.debug("Setting up sensor platform: %d Polaris coordinator(s)", len(polaris_coordinators))
-    for coordinator in polaris_coordinators:
+    elif device_type == "polaris":
         zones = coordinator.data.zones if coordinator.data else []
-        if verbose:
-            _LOGGER.debug(
-                "[Polaris][%s] Setting up sensors: %d zone(s) found",
-                coordinator.device_name, len(zones),
-            )
+        entities = [PolarisOperatingModeSensor(coordinator)]
         for zone in zones:
-            if verbose:
-                _LOGGER.debug(
-                    "[Polaris][%s] Adding temp+humidity sensors for zone '%s' (id=%d, "
-                    "current_temp=%s, humidity=%s)",
-                    coordinator.device_name, zone.name, zone.zone_id,
-                    zone.current_temp, zone.humidity,
-                )
-            sensors.append(PolarisZoneTemperatureSensor(coordinator, zone.zone_id))
-            sensors.append(PolarisZoneHumiditySensor(coordinator, zone.zone_id))
-        # Device-level operating mode sensor
-        sensors.append(PolarisOperatingModeSensor(coordinator))
-        if verbose:
-            _LOGGER.debug(
-                "[Polaris][%s] Adding operating mode sensor (current mode=%s, is_off=%s, is_cooling=%s)",
-                coordinator.device_name,
-                coordinator.data.device.cooling_mode_name if coordinator.data else "unknown",
-                coordinator.data.device.is_off if coordinator.data else "unknown",
-                coordinator.data.device.is_cooling if coordinator.data else "unknown",
-            )
-
-    async_add_entities(sensors)
-    _LOGGER.info("Added %d sensor(s)", len(sensors))
+            entities.append(PolarisZoneTemperatureSensor(coordinator, zone.zone_id))
+            entities.append(PolarisZoneHumiditySensor(coordinator, zone.zone_id))
+        async_add_entities(entities)
 
 
 class PicoTemperatureSensor(BaseEntity, SensorEntity):

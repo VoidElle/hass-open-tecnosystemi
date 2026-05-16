@@ -13,6 +13,7 @@
     "open-pico-local-api @ git+https://github.com/VoidElle/open-pico-local-api.git@v2.4.0",
     "open-polaris-local-api @ git+https://github.com/VoidElle/open-polaris-local-api.git@v1.2.0"
   ],
+  "config_flow": true,
   "single_config_entry": false,
   "ssdp": [],
   "version": "3.0.0",

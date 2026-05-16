@@ -48,7 +48,7 @@ Both device families communicate **entirely over your local network**, requiring
 
 After installing the integration (via HACS or manually) **and restarting Home Assistant**, you must add it from the UI:
 
-1. Go to **Settings → Devices & Services**
+1. Go to **Settings -> Devices & Services**
 2. Click **➕ Add Integration**
 3. Search for **"Hass Open Tecnosystemi"**
 4. Select it from the list
@@ -197,9 +197,9 @@ Bumps the integration version in `manifest.json`.
 ./scripts/bump_version.sh
 
 # Auto-increment
-./scripts/bump_version.sh patch   # 3.0.0 → 3.0.1
-./scripts/bump_version.sh minor   # 3.0.0 → 3.1.0
-./scripts/bump_version.sh major   # 3.0.0 → 4.0.0
+./scripts/bump_version.sh patch   # 3.0.0 -> 3.0.1
+./scripts/bump_version.sh minor   # 3.0.0 -> 3.1.0
+./scripts/bump_version.sh major   # 3.0.0 -> 4.0.0
 
 # Explicit version
 ./scripts/bump_version.sh 3.2.0

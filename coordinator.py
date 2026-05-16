@@ -23,13 +23,13 @@ class MainCoordinator(DataUpdateCoordinator):
             self,
             hass: HomeAssistant,
             client: PicoClient,
-            device_name: str = None
+            device_name: str,
     ) -> None:
         """Initialize coordinator."""
         self.client = client
         self.pico_ip = client.ip
         self.device_id = client.device_id
-        self.device_name = device_name or f"Pico {client.ip}"
+        self.device_name = device_name
 
         # Track consecutive failures for IDP reset
         self._consecutive_failures = 0
@@ -99,12 +99,11 @@ class MainCoordinator(DataUpdateCoordinator):
 
     @property
     def family_name(self) -> str:
-        """Return a normalized device name suitable for use in unique IDs.
+        """Return a normalized device name suitable for use in unique IDs and device registry.
 
-        Derived from the user-configured ``name`` in configuration.yaml, which
-        is stable and unique even when the device IP address changes.
+        Derived from the mandatory user-configured ``name``. Stable as long as name is not changed.
 
-        Example: "Living Room Pico" → "living_room_pico"
+        Example: "Living Room Pico" -> "living_room_pico"
         """
         return re.sub(r"[^a-z0-9]+", "_", self.device_name.lower()).strip("_")
 

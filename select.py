@@ -1,11 +1,11 @@
 """Select platform for Open Pico integration."""
 import logging
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.components.select import SelectEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType
 
 from open_pico_local_api import TargetHumidityEnum, DeviceModeEnum
 
@@ -16,30 +16,19 @@ from .coordinator import MainCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_platform(
+async def async_setup_entry(
     hass: HomeAssistant,
-    _config: ConfigType,
+    entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
-    _discovery_info=None,
-):
-    """Set up the Select platform from YAML."""
-
-    # Get all coordinators from hass.data
-    coordinators = hass.data[DOMAIN]["coordinators"]
-
-    # Create select entities for each coordinator/device
-    selects = [
-        entity
-        for idx, coordinator in enumerate(coordinators)
-        for entity in [
-            PicoTargetHumiditySelect(coordinator, idx),
-            PicoPresetModeSelect(coordinator, idx)
-        ]
-    ]
-
-    _LOGGER.debug("Setting up select platform: %d select(s)", len(selects))
-    async_add_entities(selects)
-    _LOGGER.info("Added %d select(s)", len(selects))
+) -> None:
+    """Set up Pico selects from a config entry."""
+    if entry.data.get("device_type") != "pico":
+        return
+    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    async_add_entities([
+        PicoTargetHumiditySelect(coordinator, 0),
+        PicoPresetModeSelect(coordinator, 0),
+    ])
 
 
 class PicoTargetHumiditySelect(BaseEntity, SelectEntity):

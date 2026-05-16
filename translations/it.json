@@ -1,4 +1,97 @@
 {
+  "config": {
+    "step": {
+      "user": {
+        "title": "Seleziona Tipo Dispositivo",
+        "description": "Scegli se stai aggiungendo un dispositivo Pico (ventilazione/qualità aria) o Polaris (climatizzazione).",
+        "data": {
+          "device_type": "Tipo Dispositivo"
+        }
+      },
+      "pico": {
+        "title": "Pico - Metodo di Configurazione",
+        "data": {
+          "method": "Metodo di Configurazione"
+        }
+      },
+      "pico_manual": {
+        "title": "Aggiungi Dispositivo Pico Manualmente",
+        "data": {
+          "ip": "Indirizzo IP",
+          "pin": "PIN",
+          "name": "Nome Dispositivo (opzionale)"
+        }
+      },
+      "pico_scan": {
+        "title": "Cerca Dispositivi Pico",
+        "description": "La scansione sonda ogni host nella subnet usando il PIN fornito. Vengono trovati solo i dispositivi con questo PIN.",
+        "data": {
+          "pin": "PIN",
+          "subnet": "Subnet (CIDR, es. 192.168.1.0/24)"
+        }
+      },
+      "pico_scan_results": {
+        "title": "Dispositivi Pico Trovati",
+        "description": "Seleziona un dispositivo da aggiungere.",
+        "data": {
+          "ip": "Dispositivo Scoperto"
+        }
+      },
+      "pico_scan_confirm": {
+        "title": "Conferma Dispositivo Pico",
+        "description": "Trovato Pico all'indirizzo **{ip}**. Puoi impostare un nome personalizzato.",
+        "data": {
+          "name": "Nome Dispositivo"
+        }
+      },
+      "polaris": {
+        "title": "Polaris - Metodo di Configurazione",
+        "data": {
+          "method": "Metodo di Configurazione"
+        }
+      },
+      "polaris_manual": {
+        "title": "Aggiungi Dispositivo Polaris Manualmente",
+        "data": {
+          "ip": "Indirizzo IP",
+          "pin": "PIN",
+          "name": "Nome Dispositivo (opzionale)",
+          "scan_interval": "Intervallo di Polling (secondi)"
+        }
+      },
+      "polaris_scan": {
+        "title": "Cerca Dispositivi Polaris",
+        "description": "La scansione sonda la porta TCP 1235 nella subnet. Una scansione /24 richiede circa 8 secondi.",
+        "data": {
+          "pin": "PIN",
+          "subnet": "Subnet (CIDR, es. 192.168.1.0/24)"
+        }
+      },
+      "polaris_scan_results": {
+        "title": "Dispositivi Polaris Trovati",
+        "description": "Seleziona un dispositivo da aggiungere.",
+        "data": {
+          "ip": "Dispositivo Scoperto"
+        }
+      },
+      "polaris_scan_confirm": {
+        "title": "Conferma Dispositivo Polaris",
+        "description": "Trovato Polaris all'indirizzo **{ip}**. Puoi impostare nome e intervallo di polling.",
+        "data": {
+          "name": "Nome Dispositivo",
+          "scan_interval": "Intervallo di Polling (secondi)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Impossibile connettersi al dispositivo. Controlla l'indirizzo IP e il PIN.",
+      "discovery_failed": "Scansione auto-discovery fallita. Controlla le impostazioni di rete.",
+      "no_devices_found": "Nessun nuovo dispositivo trovato in rete. I dispositivi scoperti potrebbero essere già configurati."
+    },
+    "abort": {
+      "already_configured": "Questo dispositivo è già configurato."
+    }
+  },
   "errors": {
     "unsupported_mode": "La modalitá {mode} non supporta il controllo della velocitá della ventola"
   },

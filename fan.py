@@ -1,11 +1,11 @@
 """Fan platform for Open Pico integration."""
 import logging
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.components.fan import FanEntity, FanEntityFeature
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType
 
 from open_pico_local_api import DeviceModeEnum
 
@@ -16,25 +16,16 @@ from .coordinator import MainCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_platform(
+async def async_setup_entry(
     hass: HomeAssistant,
-    _config: ConfigType,
+    entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
-    _discovery_info=None,
-):
-    """Set up the Fan platform from YAML."""
-
-    # Get all coordinators from hass.data
-    coordinators = hass.data[DOMAIN]["coordinators"]
-
-    fans = [
-        PicoFan(coordinator, idx)
-        for idx, coordinator in enumerate(coordinators)
-    ]
-
-    _LOGGER.debug("Setting up fan platform: %d fan(s)", len(fans))
-    async_add_entities(fans)
-    _LOGGER.info("Added %d fan(s)", len(fans))
+) -> None:
+    """Set up Pico fan from a config entry."""
+    if entry.data.get("device_type") != "pico":
+        return
+    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    async_add_entities([PicoFan(coordinator, 0)])
 
 
 class PicoFan(BaseEntity, FanEntity):

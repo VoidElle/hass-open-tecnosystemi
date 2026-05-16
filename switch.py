@@ -1,11 +1,11 @@
 """Switch platform for Open Pico integration."""
 import logging
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.components.switch import SwitchEntity, SwitchDeviceClass
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import ConfigType
 
 from .const import DOMAIN
 from .base import BaseEntity
@@ -14,28 +14,19 @@ from .coordinator import MainCoordinator
 _LOGGER = logging.getLogger(__name__)
 
 
-async def async_setup_platform(
+async def async_setup_entry(
     hass: HomeAssistant,
-    _config: ConfigType,
+    entry: ConfigEntry,
     async_add_entities: AddEntitiesCallback,
-    _discovery_info=None,
-):
-    """Set up the Switch platform from YAML."""
-
-    # Get all coordinators from hass.data
-    coordinators = hass.data[DOMAIN]["coordinators"]
-
-    # Create switch entities for each coordinator/device
-    switches = []
-    for idx, coordinator in enumerate(coordinators):
-        switches.extend([
-            PicoNightModeSwitch(coordinator, idx),
-            PicoLEDStatusSwitch(coordinator, idx),
-        ])
-
-    _LOGGER.debug("Setting up switch platform: %d switch(es)", len(switches))
-    async_add_entities(switches)
-    _LOGGER.info("Added %d switch(es)", len(switches))
+) -> None:
+    """Set up Pico switches from a config entry."""
+    if entry.data.get("device_type") != "pico":
+        return
+    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+    async_add_entities([
+        PicoNightModeSwitch(coordinator, 0),
+        PicoLEDStatusSwitch(coordinator, 0),
+    ])
 
 
 class PicoNightModeSwitch(BaseEntity, SwitchEntity):
