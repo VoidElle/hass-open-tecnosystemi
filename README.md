@@ -3,12 +3,12 @@
   <br>
   <small><em>(Official Tecnosystemi logo not used due to copyright restrictions)</em></small>
   <br><br>
-  <h1>🏠 Hassio Open Pico</h1>
+  <h1>🏠 Hass Open Tecnosystemi</h1>
   <p><em>Home Assistant integration for Tecnosystemi Pico and Polaris 5 devices</em></p>
 </div>
 
 
-Hassio Open Pico is a Home Assistant integration that enables management of Tecnosystemi devices through Home Assistant.
+Hass Open Tecnosystemi is a Home Assistant integration that enables management of Tecnosystemi devices through Home Assistant.
 
 **Supported device families:**
 - **Pico** — Local UDP-based ventilation and air quality units
@@ -22,21 +22,21 @@ This integration took inspiration from:
 
 ## Installation 📦
 ### Via HACS (Recommended) ⭐
-[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=VoidElle&repository=hassio-open-pico&category=integration)
+[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=VoidElle&repository=hass-open-tecnosystemi&category=integration)
 
 ### Via HACS (Manual)
 1. Add custom repository:
     - Open HACS in your Home Assistant interface
     - Go to "Integrations" tab
     - Click on the three dots in the top right corner and select "Custom repositories"
-    - Enter the repository URL: `https://github.com/VoidElle/hassio-open-pico`
+    - Enter the repository URL: `https://github.com/VoidElle/hass-open-tecnosystemi`
     - Select "Integration" as the category
     - Click "Add"
 
 
 2. Install the integration:
    - In HACS Integrations, click + Explore & Download Repositories
-   - Search for "Hassio Open Pico"
+   - Search for "Hass Open Tecnosystemi"
    - Click on the integration and then Download
    - Select the latest version and click Download
 
@@ -44,7 +44,7 @@ This integration took inspiration from:
 3. Restart Home Assistant 🔄
 
 ### Manual Installation 🔧
-1. Copy the repository content inside a folder called `hassio_open_pico`
+1. Copy the repository content inside a folder called `hass_open_tecnosystemi`
 2. Move the folder to your `custom_components` directory
 3. Restart Home Assistant
 
@@ -54,7 +54,7 @@ After installing the integration (via HACS or manually) **and restarting Home As
 
 1. Go to **Settings → Devices & Services**
 2. Click **➕ Add Integration**
-3. Search for **"Hassio Open Pico"**
+3. Search for **"Hass Open Tecnosystemi"**
 4. Select it from the list
 5. Go to the **configuration** step below
 
@@ -177,9 +177,9 @@ open_pico:
 Contributions are welcome! 
 
 ### How to Help
-- 🐛 **Report bugs** via [GitHub Issues](https://github.com/VoidElle/hassio-open-pico/issues)
+- 🐛 **Report bugs** via [GitHub Issues](https://github.com/VoidElle/hass-open-tecnosystemi/issues)
 - 🌍 **Translate** to more languages
-- 🔧 **Submit PRs** for improvements via [GitHub Pull requests](https://github.com/VoidElle/hassio-open-pico/pulls)
+- 🔧 **Submit PRs** for improvements via [GitHub Pull requests](https://github.com/VoidElle/hass-open-tecnosystemi/pulls)
 - 📖 **Improve documentation**
 
 ### Development

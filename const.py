@@ -1,4 +1,4 @@
-"""Constants for Open Pico integration."""
+"""Constants for Hass Open Tecnosystemi integration."""
 
 DOMAIN = "open_pico"
 

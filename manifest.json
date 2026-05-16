@@ -1,12 +1,12 @@
 {
   "domain": "open_pico",
-  "name": "Open Pico - Tecnosystemi",
+  "name": "Hass Open Tecnosystemi",
   "codeowners": [
     "@VoidElle"
   ],
   "dependencies": [],
-  "documentation": "https://github.com/VoidElle/hassio-open-pico",
-  "issue_tracker": "https://github.com/VoidElle/hassio-open-pico/issues",
+  "documentation": "https://github.com/VoidElle/hass-open-tecnosystemi",
+  "issue_tracker": "https://github.com/VoidElle/hass-open-tecnosystemi/issues",
   "homekit": {},
   "iot_class": "local_polling",
   "requirements": [
