@@ -151,9 +151,9 @@ async def _setup_pico_devices(
 
     successful = 0
     for idx, device_config in enumerate(devices):
-        pico_ip = device_config.get("ip")
-        pin = device_config.get("pin")
-        device_name = device_config.get("name", f"Pico Device {idx + 1}")
+        pico_ip: str = device_config["ip"]
+        pin: str = device_config["pin"]
+        device_name: str = device_config.get("name", f"Pico Device {idx + 1}")
 
         _LOGGER.debug("Setting up Pico device '%s': ip=%s", device_name, pico_ip)
 
@@ -165,13 +165,13 @@ async def _setup_pico_devices(
             )
 
             await client.connect()
-            coordinator = MainCoordinator(hass, client, device_name)
+            pico_coordinator = MainCoordinator(hass, client, device_name)
 
             try:
                 async with asyncio.timeout(30):
-                    await coordinator.async_refresh()
-                    if not coordinator.last_update_success:
-                        raise Exception(f"Initial refresh failed: {coordinator.last_exception}")
+                    await pico_coordinator.async_refresh()
+                    if not pico_coordinator.last_update_success:
+                        raise Exception(f"Initial refresh failed: {pico_coordinator.last_exception}")
             except asyncio.TimeoutError:
                 _LOGGER.error("Timeout during initial refresh for Pico '%s' (%s)", device_name, pico_ip)
                 await client.disconnect()
@@ -181,20 +181,20 @@ async def _setup_pico_devices(
                 await client.disconnect()
                 continue
 
-            if not coordinator.data:
+            if not pico_coordinator.data:
                 _LOGGER.error("No data from Pico '%s' (%s)", device_name, pico_ip)
                 await client.disconnect()
                 continue
 
-            hass.data[DOMAIN]["coordinators"].append(coordinator)
+            hass.data[DOMAIN]["coordinators"].append(pico_coordinator)
             successful += 1
 
             _LOGGER.info(
                 "Pico '%s' (%s): Mode=%s, Temp=%.1f°C, Humidity=%.1f%%",
                 device_name, pico_ip,
-                coordinator.data.operating.mode.name,
-                coordinator.data.sensors.temperature,
-                coordinator.data.sensors.humidity,
+                pico_coordinator.current_mode,
+                pico_coordinator.temperature,
+                pico_coordinator.humidity,
             )
 
         except Exception as err:
@@ -216,10 +216,10 @@ async def _setup_polaris_devices(
     successful = 0
 
     for idx, device_config in enumerate(devices):
-        polaris_ip = device_config.get("ip")
-        pin = device_config.get("pin")
-        device_name = device_config.get("name", f"Polaris Device {idx + 1}")
-        scan_interval = device_config.get("scan_interval", 30)
+        polaris_ip: str = device_config["ip"]
+        pin: str = device_config["pin"]
+        device_name: str = device_config.get("name", f"Polaris Device {idx + 1}")
+        scan_interval: int = device_config.get("scan_interval", 30)
 
         _LOGGER.debug("Setting up Polaris device '%s': ip=%s", device_name, polaris_ip)
 
@@ -261,15 +261,15 @@ async def _setup_polaris_devices(
             if device.name and device.name != "Unknown" and "name" not in device_config:
                 device_name = device.name
 
-            coordinator = PolarisCoordinator(hass, client, device_name, scan_interval=scan_interval)
+            polaris_coord = PolarisCoordinator(hass, client, device_name, scan_interval=scan_interval)
 
             # Initial refresh through the coordinator
             try:
                 async with asyncio.timeout(30):
-                    await coordinator.async_refresh()
-                    if not coordinator.last_update_success:
+                    await polaris_coord.async_refresh()
+                    if not polaris_coord.last_update_success:
                         raise Exception(
-                            f"Coordinator refresh failed: {coordinator.last_exception}"
+                            f"Coordinator refresh failed: {polaris_coord.last_exception}"
                         )
             except Exception as err:
                 _LOGGER.error(
@@ -279,7 +279,7 @@ async def _setup_polaris_devices(
                 await client.disconnect()
                 continue
 
-            hass.data[DOMAIN]["polaris_coordinators"].append(coordinator)
+            hass.data[DOMAIN]["polaris_coordinators"].append(polaris_coord)
             successful += 1
 
             _LOGGER.info(
@@ -304,17 +304,17 @@ async def async_unload_entry(hass: HomeAssistant) -> bool:
 
     # Shutdown Pico coordinators
     if DOMAIN in hass.data and "coordinators" in hass.data[DOMAIN]:
-        for coordinator in hass.data[DOMAIN]["coordinators"]:
+        for pico_coordinator in hass.data[DOMAIN]["coordinators"]:
             try:
-                await coordinator.async_shutdown()
+                await pico_coordinator.async_shutdown()
             except Exception as err:
                 _LOGGER.error("Error shutting down Pico coordinator: %s", err)
 
     # Shutdown Polaris coordinators
     if DOMAIN in hass.data and "polaris_coordinators" in hass.data[DOMAIN]:
-        for coordinator in hass.data[DOMAIN]["polaris_coordinators"]:
+        for polaris_coord in hass.data[DOMAIN]["polaris_coordinators"]:
             try:
-                await coordinator.async_shutdown()
+                await polaris_coord.async_shutdown()
             except Exception as err:
                 _LOGGER.error("Error shutting down Polaris coordinator: %s", err)
 
