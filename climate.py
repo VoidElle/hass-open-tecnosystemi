@@ -46,9 +46,9 @@ _CU_TO_HVAC: dict[tuple[bool, int], HVACMode] = {v: k for k, v in _HVAC_TO_CU.it
 
 async def async_setup_platform(
     hass: HomeAssistant,
-    config: ConfigType,
+    _config: ConfigType,
     async_add_entities: AddEntitiesCallback,
-    discovery_info: DiscoveryInfoType | None = None,
+    _discovery_info: DiscoveryInfoType | None = None,
 ) -> None:
     """Set up Polaris climate entities from discovery."""
     if DOMAIN not in hass.data:
@@ -308,7 +308,7 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
             await self._coordinator.async_turn_zone_on(self._zone_id)
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
-        temperature = kwargs.get(ATTR_TEMPERATURE)
+        temperature: float | None = kwargs.get(ATTR_TEMPERATURE)
         if temperature is not None:
             await self._coordinator.async_set_zone_temp(self._zone_id, temperature)
 
