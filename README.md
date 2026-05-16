@@ -3,12 +3,12 @@
   <br>
   <small><em>(Official Tecnosystemi logo not used due to copyright restrictions)</em></small>
   <br><br>
-  <h1>🏠 Hass Open Tecnosystemi</h1>
+  <h1>🏠 Open Tecnosystemi</h1>
   <p><em>Home Assistant integration for Tecnosystemi Pico and Polaris 5X devices</em></p>
 </div>
 
 
-Hass Open Tecnosystemi is a Home Assistant integration that enables management of Tecnosystemi devices through Home Assistant.
+Open Tecnosystemi is a Home Assistant integration that enables management of Tecnosystemi devices through Home Assistant.
 
 **Supported device families:**
 - **Pico** - Local UDP-based ventilation and air quality units
@@ -32,7 +32,7 @@ Both device families communicate **entirely over your local network**, requiring
 
 2. Install the integration:
    - In HACS Integrations, click + Explore & Download Repositories
-   - Search for "Hass Open Tecnosystemi"
+   - Search for "Open Tecnosystemi"
    - Click on the integration and then Download
    - Select the latest version and click Download
 
@@ -46,97 +46,29 @@ Both device families communicate **entirely over your local network**, requiring
 
 ## Add the Integration to Home Assistant 🧩
 
-After installing the integration (via HACS or manually) **and restarting Home Assistant**, you must add it from the UI:
+After installing (via HACS or manually) and restarting Home Assistant:
 
 1. Go to **Settings -> Devices & Services**
-2. Click **➕ Add Integration**
-3. Search for **"Hass Open Tecnosystemi"**
+2. Click **+ Add Integration**
+3. Search for **"Open Tecnosystemi"**
 4. Select it from the list
-5. Go to the **configuration** step below
-
-At this point, Home Assistant will load the integration and apply the configuration defined in `configuration.yaml`.
-
-> ⚠️ **Important**  
-> Even though configuration is YAML-based, this UI step is still required to register the integration inside Home Assistant.
+5. Choose the device family: **Pico** or **Polaris**
+6. Choose the setup method: **Manual** or **Scan**
 
 ## Configuration ⚙️
 
-The integration is configured via `configuration.yaml`. You can configure Pico devices, Polaris 5X devices, or both.
+All configuration is done through the Home Assistant UI — no `configuration.yaml` editing required.
 
-### Pico devices (local)
+### Auto-scan
 
-```yaml
-open_pico:
-  # Optional: Enable verbose logging (default: false)
-  verbose: false
+Instead of entering the IP manually, both Pico and Polaris support network scanning:
 
-  # Pico devices (local UDP, port 40069)
-  devices:
-    - ip: "192.168.8.133"
-      pin: "1234"
-      name: "Living Room"
+1. Select **Scan** as the setup method
+2. Enter your subnet (e.g. `192.168.1.0/24`) and PIN
+3. The integration will probe the network and list discovered devices
+4. Select a device and give it a name
 
-    - ip: "192.168.8.159"
-      pin: "1234"
-      name: "Bedroom"
-```
-
-| Parameter | Required | Description                         |
-|-----------|----------|-------------------------------------|
-| `ip`      | Yes      | Local IP address of the Pico device |
-| `pin`     | Yes      | Device PIN code                     |
-| `name`    | No       | Friendly name for the device        |
-
-### Polaris 5X devices (local)
-
-Polaris 5X devices communicate via **local TCP on port 1235** - the same protocol used by the official Tecnosystemi app. You need the device's local IP address and PIN code.
-
-> **How to find the IP and PIN:** Connect to the Polaris device's WiFi access point (SSID starts with `POLARIS_`), or find its IP in your router's DHCP table. The PIN is the same one you use in the official Tecnosystemi app when selecting a device.
-
-```yaml
-open_pico:
-  # Polaris 5X devices (local TCP, port 1235)
-  polaris_devices:
-    - ip: "192.168.8.200"
-      pin: "0000"
-      name: "Polaris Living Room"
-      # Optional: polling interval in seconds (default: 30, minimum: 10)
-      # The Polaris CU has a limited TCP stack. Polling too frequently
-      # can disrupt the device's persistent cloud connection, causing
-      # the official Tecnosystemi app to show "Stato sistema non sincronizzato".
-      # Increase this value if you experience that issue.
-      scan_interval: 30
-```
-
-| Parameter       | Required | Description                                                                                                                                      |
-|-----------------|----------|--------------------------------------------------------------------------------------------------------------------------------------------------|
-| `ip`            | Yes      | Local IP address of the Polaris CU device                                                                                                        |
-| `pin`           | Yes      | Device PIN code (the one you enter when selecting a device in the app)                                                                           |
-| `name`          | No       | Friendly name (defaults to the name configured in the device)                                                                                    |
-| `scan_interval` | No       | Polling interval in seconds (default: `30`, minimum: `10`). Lower values give faster HA updates but may interrupt the official app's cloud sync. |
-
-### Mixed configuration (Pico + Polaris)
-
-You can configure both Pico and Polaris devices in the same integration:
-
-```yaml
-open_pico:
-  verbose: false
-
-  devices:
-    - ip: "192.168.8.133"
-      pin: "1234"
-      name: "Pico Living Room"
-
-  polaris_devices:
-    - ip: "192.168.8.200"
-      pin: "0000"
-      name: "Polaris Living Room"
-      scan_interval: 30
-```
-1. Save your `configuration.yaml`
-2. Check configuration validity: Developer Tools > YAML > Check Configuration
-3. Restart Home Assistant
+Already-configured devices are automatically excluded from scan results.
 
 ## Features ✨
 
@@ -154,12 +86,11 @@ open_pico:
 
 ### General
 - 🔄 **Multi-Device Support**: Control multiple devices of both types simultaneously
-- 🏷️ **Device Organization**: Use Home Assistant areas for logical grouping
-- ⚡ **Concurrent Polling**: Efficient updates across all devices (5 second interval)
+- 🏷️ **Device Organization**: Entities are grouped per device for easy management
+- ⚡ **Concurrent Polling**: Efficient updates across all devices
 
 ## Limitations ⚠️
 - Both Pico and Polaris require local network access (devices must be on the same network as Home Assistant)
-- Configuration via YAML only (no UI configuration flow yet)
 
 ## Tested On 🧪
 - PICO PRO PLUS 30 **(ACD100052)**
