@@ -7,8 +7,11 @@
 
 set -euo pipefail
 
-MANIFEST="manifest.json"
-README="README.md"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+
+MANIFEST="$ROOT_DIR/manifest.json"
+README="$ROOT_DIR/README.md"
 
 usage() {
   echo "Usage: $0 <major|minor|patch|x.y.z>"

@@ -183,3 +183,32 @@ Contributions are welcome!
 2. Create a feature branch: `git checkout -b feature/name`
 3. Follow [Home Assistant dev guidelines](https://developers.home-assistant.io/)
 4. Submit a PR with clear description
+
+### Scripts
+
+Helper scripts live in the `scripts/` folder.
+
+#### `scripts/bump_version.sh`
+
+Bumps the integration version in `manifest.json`.
+
+```bash
+# Interactive menu
+./scripts/bump_version.sh
+
+# Auto-increment
+./scripts/bump_version.sh patch   # 3.0.0 → 3.0.1
+./scripts/bump_version.sh minor   # 3.0.0 → 3.1.0
+./scripts/bump_version.sh major   # 3.0.0 → 4.0.0
+
+# Explicit version
+./scripts/bump_version.sh 3.2.0
+```
+
+After bumping, commit and tag:
+```bash
+git add manifest.json
+git commit -m "chore: bump version to vX.Y.Z"
+git tag vX.Y.Z
+git push && git push --tags
+```

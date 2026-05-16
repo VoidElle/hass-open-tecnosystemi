@@ -10,8 +10,8 @@
   "homekit": {},
   "iot_class": "local_polling",
   "requirements": [
-    "open-pico-local-api @ git+https://github.com/VoidElle/open-pico-local-api.git@v2.3.1",
-    "open-polaris-local-api @ git+https://github.com/VoidElle/open-polaris-local-api.git@v1.1.0"
+    "open-pico-local-api @ git+https://github.com/VoidElle/open-pico-local-api.git@v2.4.0",
+    "open-polaris-local-api @ git+https://github.com/VoidElle/open-polaris-local-api.git@v1.2.0"
   ],
   "single_config_entry": false,
   "ssdp": [],
