@@ -11,14 +11,10 @@
 Hass Open Tecnosystemi is a Home Assistant integration that enables management of Tecnosystemi devices through Home Assistant.
 
 **Supported device families:**
-- **Pico** — Local UDP-based ventilation and air quality units
-- **Polaris 5X** — Local TCP-based HVAC zone controllers
+- **Pico** - Local UDP-based ventilation and air quality units
+- **Polaris 5X** - Local TCP-based HVAC zone controllers
 
 Both device families communicate **entirely over your local network**, requiring no cloud connectivity.
-
-This integration took inspiration from:
-- The official [Tecnosystemi](https://play.google.com/store/apps/details?id=it.tecnosystemi.TS&hl=it) mobile application
-- My own reverse engineered POC mobile application [Open Pico](https://github.com/VoidElle/open-pico-app)
 
 ## Installation 📦
 ### Via HACS (Recommended) ⭐
@@ -93,7 +89,7 @@ open_pico:
 
 ### Polaris 5 devices (local)
 
-Polaris 5 devices communicate via **local TCP on port 1235** — the same protocol used by the official Tecnosystemi app. You need the device's local IP address and PIN code.
+Polaris 5 devices communicate via **local TCP on port 1235** - the same protocol used by the official Tecnosystemi app. You need the device's local IP address and PIN code.
 
 > **How to find the IP and PIN:** Connect to the Polaris device's WiFi access point (SSID starts with `POLARIS_`), or find its IP in your router's DHCP table. The PIN is the same one you use in the official Tecnosystemi app when selecting a device.
 
