@@ -19,9 +19,9 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_platform(
     hass: HomeAssistant,
-    config: ConfigType,
+    _config: ConfigType,
     async_add_entities: AddEntitiesCallback,
-    discovery_info=None,
+    _discovery_info=None,
 ):
     """Set up the Select platform from YAML."""
 
@@ -125,11 +125,11 @@ class PicoPresetModeSelect(BaseEntity, SelectEntity):
         if not self.coordinator.data:
             return None
 
-        # Get the current mode enum value (int)
-        mode_int = int(self.coordinator.current_mode)
-
-        # Convert to preset string
-        return MODE_INT_TO_PRESET.get(mode_int)
+        mode = self.coordinator.current_mode
+        if mode is None:
+            _LOGGER.debug("[%s] current_option: current_mode is None", self.coordinator.device_name)
+            return None
+        return MODE_INT_TO_PRESET.get(mode.value)
 
     @property
     def options(self) -> list[str]:
