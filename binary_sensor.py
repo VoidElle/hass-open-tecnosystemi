@@ -19,7 +19,7 @@ _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_platform(
     hass: HomeAssistant,
-    config: ConfigType,
+    _config: ConfigType,
     async_add_entities: AddEntitiesCallback,
     discovery_info=None,
 ):
@@ -35,7 +35,6 @@ async def async_setup_platform(
         sensors.append(PicoMaintenanceBinarySensor(coordinator, idx))
 
     # ─── Polaris sensors (device error + per-zone error) ──────────
-    from .polaris_coordinator import PolarisCoordinator
     polaris_coordinators = hass.data[DOMAIN].get("polaris_coordinators", [])
     for coordinator in polaris_coordinators:
         sensors.append(PolarisDeviceErrorBinarySensor(coordinator))
