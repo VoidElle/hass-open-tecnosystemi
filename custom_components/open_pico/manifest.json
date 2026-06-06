@@ -13,5 +13,5 @@
     "open-polaris-local-api==1.2.1"
   ],
   "single_config_entry": false,
-  "version": "4.0.0"
+  "version": "4.1.0"
 }
