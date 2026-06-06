@@ -92,9 +92,6 @@
       "already_configured": "Questo dispositivo è già configurato."
     }
   },
-  "errors": {
-    "unsupported_mode": "La modalitá {mode} non supporta il controllo della velocitá della ventola"
-  },
   "entity": {
     "fan": {
       "pico": {

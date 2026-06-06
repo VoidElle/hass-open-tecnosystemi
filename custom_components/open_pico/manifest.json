@@ -8,7 +8,6 @@
   "documentation": "https://github.com/VoidElle/hass-open-tecnosystemi",
   "issue_tracker": "https://github.com/VoidElle/hass-open-tecnosystemi/issues",
   "homekit": {},
-  "homeassistant": "2024.1.0",
   "iot_class": "local_polling",
   "requirements": [
     "open-pico-local-api==2.4.1",

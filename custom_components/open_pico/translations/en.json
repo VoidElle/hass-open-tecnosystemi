@@ -92,9 +92,6 @@
       "already_configured": "This device is already configured."
     }
   },
-  "errors": {
-    "unsupported_mode": "Mode {mode} does not support speed control"
-  },
   "entity": {
     "fan": {
       "pico": {
