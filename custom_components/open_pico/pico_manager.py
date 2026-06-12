@@ -55,7 +55,8 @@ class PicoClientManager:
         device_id: str = None,
         timeout: float = 15,
         retry_attempts: int = 3,
-        retry_delay: float = 2.0
+        retry_delay: float = 2.0,
+        poll_jitter: float = 2.0,
     ) -> PicoClient:
         """
         Create a new Pico client that uses the shared transport.
@@ -67,6 +68,8 @@ class PicoClientManager:
             timeout: Request timeout in seconds
             retry_attempts: Number of retry attempts
             retry_delay: Delay between retries
+            poll_jitter: Max random delay (seconds) added after connect to spread
+                         simultaneous polls across multiple devices. Default 2.0 s.
 
         Returns:
             PicoClient instance configured for shared transport
@@ -94,7 +97,7 @@ class PicoClientManager:
             retry_attempts=retry_attempts,
             retry_delay=retry_delay,
             verbose=self._verbose,
-            use_shared_transport=True  # Key setting!
+            poll_jitter=poll_jitter,
         )
 
         # Store client reference
