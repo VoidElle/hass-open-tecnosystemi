@@ -1,0 +1,4 @@
+pytest-homeassistant-custom-component
+pytest-asyncio
+open-pico-local-api==2.5.1
+open-polaris-local-api==1.2.1
