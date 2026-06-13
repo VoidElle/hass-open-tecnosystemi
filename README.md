@@ -13,7 +13,7 @@
   <a href="https://www.home-assistant.io/"><img src="https://img.shields.io/badge/Home%20Assistant-%E2%89%A52024.1-41BDF5?style=flat-square&logo=home-assistant" alt="Home Assistant"></a>
   <a href="https://github.com/VoidElle/hass-open-tecnosystemi/stargazers"><img src="https://img.shields.io/github/stars/VoidElle/hass-open-tecnosystemi?style=flat-square" alt="stars"></a>
   <a href="https://github.com/VoidElle/hass-open-tecnosystemi/commits"><img src="https://img.shields.io/github/last-commit/VoidElle/hass-open-tecnosystemi?style=flat-square" alt="last commit"></a>
-  <a href="https://github.com/VoidElle/hass-open-tecnosystemi/actions"><img src="https://img.shields.io/badge/tests-291%20passed-brightgreen?style=flat-square&logo=pytest" alt="tests"></a>
+  <a href="https://github.com/VoidElle/hass-open-ialarm-mk-7/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflow/status/VoidElle/hass-open-ialarm-mk-7/tests.yml?style=flat-square&label=tests" alt="tests"></a>
 </div>
 
 
