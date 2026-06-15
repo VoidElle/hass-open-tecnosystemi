@@ -101,6 +101,27 @@ Already-configured devices are automatically excluded from scan results.
 ## Limitations ⚠️
 - Both Pico and Polaris require local network access (devices must be on the same network as Home Assistant)
 
+## Debugging / Logging 🪵
+
+To enable verbose logging, add the following to your `configuration.yaml`:
+
+```yaml
+logger:
+  default: warning
+  logs:
+    custom_components.open_pico: debug
+    open_pico_local_api: debug
+    open_polaris_local_api: debug
+```
+
+| Logger | Covers |
+|---|---|
+| `custom_components.open_pico` | Entire integration (coordinators, entities, config flow) |
+| `open_pico_local_api` | Pico UDP local API library |
+| `open_polaris_local_api` | Polaris TCP local API library |
+
+You can also change log levels at runtime without restarting HA via **Developer Tools → Actions** and calling the `logger.set_level` action.
+
 ## Tested On 🧪
 - PICO PRO PLUS 30 **(ACD100052)**
 - PICO PRO PLUS 60 **(ACD100054)**
