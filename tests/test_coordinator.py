@@ -98,7 +98,7 @@ class TestMainCoordinatorControl:
         real_pico_coordinator.data.support_fan_speed_control = True
         real_pico_coordinator.data.operating.night_mode = 0
         await real_pico_coordinator.async_set_fan_speed(80)
-        mock_pico_client.change_fan_speed.assert_called_once_with(80, retry=True, force=False)
+        mock_pico_client.change_fan_speed.assert_called_once_with(80, retry=True, force=True)
 
     async def test_set_fan_speed_unsupported_raises(self, real_pico_coordinator):
         real_pico_coordinator.data.support_fan_speed_control = False
@@ -108,7 +108,7 @@ class TestMainCoordinatorControl:
     async def test_set_night_mode_on(self, real_pico_coordinator, mock_pico_client):
         real_pico_coordinator.data.support_night_mode_toggle = True
         await real_pico_coordinator.async_set_night_mode(True)
-        mock_pico_client.set_night_mode.assert_called_once_with(True, retry=True, force=False)
+        mock_pico_client.set_night_mode.assert_called_once_with(True, retry=True, force=True)
 
     async def test_set_night_mode_unsupported_raises(self, real_pico_coordinator):
         real_pico_coordinator.data.support_night_mode_toggle = False
@@ -122,7 +122,7 @@ class TestMainCoordinatorControl:
     async def test_set_target_humidity_valid(self, real_pico_coordinator, mock_pico_client):
         real_pico_coordinator.data.support_target_humidity_selection = True
         await real_pico_coordinator.async_set_target_humidity(2)
-        mock_pico_client.set_target_humidity.assert_called_once_with(2, retry=True, force=False)
+        mock_pico_client.set_target_humidity.assert_called_once_with(2, retry=True, force=True)
 
     async def test_set_target_humidity_unsupported_raises(self, real_pico_coordinator):
         real_pico_coordinator.data.support_target_humidity_selection = False

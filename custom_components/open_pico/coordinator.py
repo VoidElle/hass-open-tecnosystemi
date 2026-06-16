@@ -1,7 +1,9 @@
 """DataUpdateCoordinator for Open Pico integration."""
 
+import asyncio
 from datetime import timedelta
 import logging
+import random
 import re
 
 from homeassistant.core import HomeAssistant
@@ -13,6 +15,9 @@ from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
+# Max jitter added to each poll cycle (seconds). Keeps multiple coordinators
+# from firing simultaneously every scan interval.
+_POLL_JITTER_MAX = 2.0
 
 class MainCoordinator(DataUpdateCoordinator):
     """The main coordinator for Open Pico devices."""
@@ -53,6 +58,9 @@ class MainCoordinator(DataUpdateCoordinator):
         """
         try:
             _LOGGER.debug("[%s] Starting data update", self.device_name)
+
+            # Spread concurrent polls so devices don't always fire together.
+            await asyncio.sleep(random.uniform(0, _POLL_JITTER_MAX))
 
             # Check connection status
             if not self.client.connected:
@@ -184,7 +192,7 @@ class MainCoordinator(DataUpdateCoordinator):
         if not self.supports_fan_speed and percentage != 100:
             raise ValueError(f"Device does not support fan speed control in current mode ({self.current_mode})")
 
-        await self.client.change_fan_speed(percentage, retry=True, force=False)
+        await self.client.change_fan_speed(percentage, retry=True, force=True)
         await self.async_request_refresh()
 
     async def async_set_night_mode(self, enable: bool) -> None:
@@ -194,7 +202,7 @@ class MainCoordinator(DataUpdateCoordinator):
         if not self.supports_night_mode:
             raise ValueError(f"Device does not support night mode in current mode ({self.current_mode})")
 
-        await self.client.set_night_mode(enable, retry=True, force=False)
+        await self.client.set_night_mode(enable, retry=True, force=True)
         await self.async_request_refresh()
 
     async def async_set_led_status(self, enable: bool) -> None:
@@ -210,5 +218,5 @@ class MainCoordinator(DataUpdateCoordinator):
         if not self.supports_target_humidity:
             raise ValueError(f"Device does not support target humidity in current mode ({self.current_mode})")
 
-        await self.client.set_target_humidity(target, retry=True, force=False)
+        await self.client.set_target_humidity(target, retry=True, force=True)
         await self.async_request_refresh()
