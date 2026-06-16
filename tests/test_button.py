@@ -19,7 +19,7 @@ class TestPicoMaintenanceResetButton:
         assert button.unique_id == f"{DOMAIN}_reset_maintenance_{pico_coordinator.family_name}"
 
     def test_name(self, button):
-        assert button.name == "Reset Filter Maintenance"
+        assert button._attr_translation_key == "reset_filter_maintenance"
 
     def test_available_when_maintenance_needed(self, button, pico_coordinator):
         pico_coordinator.data.device_info.needs_clean_filters_maintenance = True

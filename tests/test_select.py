@@ -25,7 +25,7 @@ class TestTargetHumiditySelect:
         assert humidity_select.unique_id == f"{DOMAIN}_target_humidity_{pico_coordinator.family_name}"
 
     def test_name(self, humidity_select):
-        assert humidity_select.name == "Target Humidity"
+        assert humidity_select._attr_translation_key == "target_humidity"
 
     def test_options_are_percentage_strings(self, humidity_select):
         assert set(humidity_select.options) == {"40%", "50%", "60%"}
@@ -83,7 +83,7 @@ class TestPresetModeSelect:
         assert preset_select.unique_id == f"{DOMAIN}_preset_mode_{pico_coordinator.family_name}"
 
     def test_name(self, preset_select):
-        assert preset_select.name == "Preset Mode"
+        assert preset_select._attr_translation_key == "preset_mode"
 
     def test_options_all_12_modes(self, preset_select):
         assert len(preset_select.options) == 12

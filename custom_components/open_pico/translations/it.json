@@ -95,6 +95,7 @@
   "entity": {
     "fan": {
       "pico": {
+        "name": "CMV",
         "state_attributes": {
           "preset_mode": {
             "state": {
@@ -116,6 +117,9 @@
       }
     },
     "select": {
+      "target_humidity": {
+        "name": "Umidità Target"
+      },
       "preset_mode": {
         "name": "Modalità Preimpostata",
         "state": {
@@ -135,6 +139,21 @@
       }
     },
     "sensor": {
+      "temperature": {
+        "name": "Temperatura"
+      },
+      "humidity": {
+        "name": "Umidità"
+      },
+      "air_quality": {
+        "name": "CO2"
+      },
+      "tvoc": {
+        "name": "TVOC"
+      },
+      "eco2": {
+        "name": "eCO2"
+      },
       "polaris_operating_mode": {
         "name": "Modalità Operativa",
         "state": {
@@ -147,8 +166,24 @@
       }
     },
     "binary_sensor": {
+      "filter_maintenance": {
+        "name": "Manutenzione Filtro Richiesta"
+      },
       "polaris_device_error": {
         "name": "Errore Dispositivo"
+      }
+    },
+    "button": {
+      "reset_filter_maintenance": {
+        "name": "Reimposta Manutenzione Filtro"
+      }
+    },
+    "switch": {
+      "night_mode": {
+        "name": "Modalità Notte"
+      },
+      "led_status": {
+        "name": "Stato LED"
       }
     }
   },

@@ -42,7 +42,6 @@ class PicoTargetHumiditySelect(BaseEntity, SelectEntity):
 
         # Set unique_id based on stable user-configured family name
         self._attr_unique_id = f"{DOMAIN}_target_humidity_{coordinator.family_name}"
-        self._attr_name = "Target Humidity"
 
     @property
     def available(self) -> bool:
@@ -106,7 +105,6 @@ class PicoPresetModeSelect(BaseEntity, SelectEntity):
 
         # Set unique_id based on stable user-configured family name
         self._attr_unique_id = f"{DOMAIN}_preset_mode_{coordinator.family_name}"
-        self._attr_name = "Preset Mode"
 
     @property
     def current_option(self) -> str | None:

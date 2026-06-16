@@ -48,7 +48,6 @@ class PicoMaintenanceBinarySensor(BaseEntity, BinarySensorEntity):
         super().__init__(coordinator, device_index)
 
         self._attr_unique_id = f"{DOMAIN}_filter_maintenance_{coordinator.family_name}"
-        self._attr_name = "Filter Maintenance Required"
 
     @property
     def is_on(self) -> bool | None:

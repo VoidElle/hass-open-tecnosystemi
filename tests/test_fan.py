@@ -21,7 +21,7 @@ class TestPicoFanAttributes:
         assert fan.unique_id == f"{DOMAIN}_fan_{pico_coordinator.family_name}"
 
     def test_name(self, fan):
-        assert fan.name == "CMV"
+        assert fan._attr_translation_key == "pico"
 
     def test_preset_modes_complete(self, fan):
         assert set(fan.preset_modes) == set(MODE_PRESET_TO_INT.keys())

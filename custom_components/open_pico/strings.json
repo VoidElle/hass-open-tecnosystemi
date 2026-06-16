@@ -92,6 +92,101 @@
       "already_configured": "This device is already configured."
     }
   },
+  "entity": {
+    "fan": {
+      "pico": {
+        "name": "CMV",
+        "state_attributes": {
+          "preset_mode": {
+            "state": {
+              "heat_recovery": "Heat Recovery",
+              "extraction": "Extraction",
+              "immission": "Immission",
+              "humidity_recovery": "Humidity - Recovery",
+              "humidity_extraction": "Humidity - Extraction",
+              "comfort_summer": "Comfort Summer",
+              "comfort_winter": "Comfort Winter",
+              "co2_recovery": "CO₂ - Recovery",
+              "co2_extraction": "CO₂ - Extraction",
+              "humidity_co2_recovery": "Humidity CO₂ - Recovery",
+              "humidity_co2_extraction": "Humidity CO₂ - Extraction",
+              "natural_ventilation": "Natural Ventilation"
+            }
+          }
+        }
+      }
+    },
+    "select": {
+      "target_humidity": {
+        "name": "Target Humidity"
+      },
+      "preset_mode": {
+        "name": "Preset Mode",
+        "state": {
+          "heat_recovery": "Heat Recovery",
+          "extraction": "Extraction",
+          "immission": "Immission",
+          "humidity_recovery": "Humidity - Recovery",
+          "humidity_extraction": "Humidity - Extraction",
+          "comfort_summer": "Comfort Summer",
+          "comfort_winter": "Comfort Winter",
+          "co2_recovery": "CO₂ - Recovery",
+          "co2_extraction": "CO₂ - Extraction",
+          "humidity_co2_recovery": "Humidity CO₂ - Recovery",
+          "humidity_co2_extraction": "Humidity CO₂ - Extraction",
+          "natural_ventilation": "Natural Ventilation"
+        }
+      }
+    },
+    "sensor": {
+      "temperature": {
+        "name": "Temperature"
+      },
+      "humidity": {
+        "name": "Humidity"
+      },
+      "air_quality": {
+        "name": "CO2"
+      },
+      "tvoc": {
+        "name": "TVOC"
+      },
+      "eco2": {
+        "name": "eCO2"
+      },
+      "polaris_operating_mode": {
+        "name": "Operating Mode",
+        "state": {
+          "heating": "Heating",
+          "cooling": "Cooling",
+          "dehumidification": "Dehumidification",
+          "ventilation": "Ventilation",
+          "unknown": "Unknown"
+        }
+      }
+    },
+    "binary_sensor": {
+      "filter_maintenance": {
+        "name": "Filter Maintenance Required"
+      },
+      "polaris_device_error": {
+        "name": "Device Error"
+      }
+    },
+    "button": {
+      "reset_filter_maintenance": {
+        "name": "Reset Filter Maintenance"
+      }
+    },
+    "switch": {
+      "night_mode": {
+        "name": "Night Mode"
+      },
+      "led_status": {
+        "name": "LED Status"
+      }
+    }
+  },
   "selector": {
     "device_type": {
       "options": {

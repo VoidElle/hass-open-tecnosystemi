@@ -23,7 +23,7 @@ class TestPicoMaintenanceBinarySensor:
         assert sensor.unique_id == f"{DOMAIN}_filter_maintenance_{pico_coordinator.family_name}"
 
     def test_name(self, sensor):
-        assert "Filter" in sensor.name
+        assert sensor._attr_translation_key == "filter_maintenance"
 
     def test_is_on_when_maintenance_needed(self, sensor, pico_coordinator):
         pico_coordinator.data.device_info.needs_clean_filters_maintenance = True

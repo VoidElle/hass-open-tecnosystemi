@@ -25,7 +25,7 @@ class TestNightModeSwitch:
         assert night_switch.unique_id == f"{DOMAIN}_night_mode_{pico_coordinator.family_name}"
 
     def test_name(self, night_switch):
-        assert night_switch.name == "Night Mode"
+        assert night_switch._attr_translation_key == "night_mode"
 
     def test_is_on_when_night_mode_active(self, night_switch, pico_coordinator):
         pico_coordinator.data.operating.night_mode = 1
@@ -72,7 +72,7 @@ class TestLEDStatusSwitch:
         assert led_switch.unique_id == f"{DOMAIN}_led_status_{pico_coordinator.family_name}"
 
     def test_name(self, led_switch):
-        assert led_switch.name == "LED Status"
+        assert led_switch._attr_translation_key == "led_status"
 
     def test_is_on_when_led_1(self, led_switch, pico_coordinator):
         pico_coordinator.data.operating.led_on_off_short = 1
