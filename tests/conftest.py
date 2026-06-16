@@ -12,6 +12,13 @@ from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 
+# Patch async_write_ha_state on the HA Entity base so entity tests don't need
+# a real hass instance wired up. Autouse so all tests get it automatically.
+@pytest.fixture(autouse=True)
+def patch_write_ha_state():
+    with patch("homeassistant.helpers.entity.Entity.async_write_ha_state"):
+        yield
+
 # ---------------------------------------------------------------------------
 # Stub external packages before any integration code is imported
 # ---------------------------------------------------------------------------

@@ -56,11 +56,15 @@ class PicoFan(BaseEntity, FanEntity):
     @property
     def is_on(self) -> bool | None:
         """Return true if the fan is on."""
+        if self._optimistic:
+            return self._attr_is_on
         return self.coordinator.is_on
 
     @property
     def preset_mode(self) -> str | None:
         """Return the current preset mode."""
+        if self._optimistic:
+            return self._attr_preset_mode
         if not self.coordinator.data:
             _LOGGER.debug("[%s] preset_mode: no data", self.coordinator.device_name)
             return None
@@ -86,6 +90,8 @@ class PicoFan(BaseEntity, FanEntity):
     @property
     def percentage(self) -> int | None:
         """Return the current speed percentage."""
+        if self._optimistic:
+            return self._attr_percentage
         if not self.coordinator.data:
             return None
 
@@ -120,10 +126,15 @@ class PicoFan(BaseEntity, FanEntity):
                 "Cannot set fan speed while night mode is enabled"
             )
 
-        # Set the fan speed
+        self._optimistic = True
+        self._attr_is_on = True
+        self._attr_percentage = percentage
+        self.async_write_ha_state()
+
         try:
             await self.coordinator.async_set_fan_speed(percentage)
         except Exception as err:
+            self._optimistic = False
             _LOGGER.error("Failed to set fan speed: %s", err)
             raise HomeAssistantError(f"Failed to set fan speed: {err}") from err
 
@@ -133,16 +144,19 @@ class PicoFan(BaseEntity, FanEntity):
         if preset_mode not in self.preset_modes:
             raise ValueError(f"Invalid mode: {preset_mode}")
 
-        # Convert preset mode string to int
         mode_int = MODE_PRESET_TO_INT.get(preset_mode)
         if mode_int is None:
             raise ValueError(f"Unknown preset mode: {preset_mode}")
 
+        self._optimistic = True
+        self._attr_preset_mode = preset_mode
+        self.async_write_ha_state()
+
         try:
-            # Convert int to DeviceModeEnum
             mode_enum = DeviceModeEnum(mode_int)
             await self.coordinator.async_set_mode(mode_enum)
         except Exception as err:
+            self._optimistic = False
             _LOGGER.error("Failed to set preset mode: %s", err)
             raise HomeAssistantError(f"Failed to set preset mode: {err}") from err
 
@@ -154,26 +168,37 @@ class PicoFan(BaseEntity, FanEntity):
     ) -> None:
         """Turn on the fan."""
         _LOGGER.debug("[%s] turn_on: percentage=%s, preset_mode=%s", self.coordinator.device_name, percentage, preset_mode)
+
+        self._optimistic = True
+        self._attr_is_on = True
+        self.async_write_ha_state()
+
         try:
             await self.coordinator.async_turn_on()
 
-            # If a preset mode is specified, set it after turning on
             if preset_mode and preset_mode in self.preset_modes:
                 await self.async_set_preset_mode(preset_mode)
 
-            # If a percentage is specified, set it after turning on
             if percentage is not None and percentage > 0:
                 await self.async_set_percentage(percentage)
 
         except Exception as err:
+            self._optimistic = False
             _LOGGER.error("Failed to turn on fan: %s", err)
             raise HomeAssistantError(f"Failed to turn on fan: {err}") from err
 
     async def async_turn_off(self, **_kwargs) -> None:
         """Turn off the fan."""
         _LOGGER.debug("[%s] turn_off", self.coordinator.device_name)
+
+        self._optimistic = True
+        self._attr_is_on = False
+        self._attr_percentage = 0
+        self.async_write_ha_state()
+
         try:
             await self.coordinator.async_turn_off()
         except Exception as err:
+            self._optimistic = False
             _LOGGER.error("Failed to turn off fan: %s", err)
             raise HomeAssistantError(f"Failed to turn off fan: {err}") from err

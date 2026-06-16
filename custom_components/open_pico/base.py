@@ -24,10 +24,12 @@ class BaseEntity(CoordinatorEntity):
         """Initialise entity."""
         super().__init__(coordinator)
         self.device_index = device_index
+        self._optimistic = False  # True while waiting for coordinator to confirm a command
 
     @callback
     def _handle_coordinator_update(self) -> None:
         """Update entity with latest data from coordinator."""
+        self._optimistic = False  # coordinator confirmed - drop optimistic state
         self.async_write_ha_state()
 
     @property

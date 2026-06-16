@@ -56,14 +56,11 @@ class PicoTargetHumiditySelect(BaseEntity, SelectEntity):
     @property
     def current_option(self) -> str | None:
         """Return the current selected option."""
+        if self._optimistic:
+            return self._attr_current_option
         if not self.coordinator.data:
             return None
-
-        # Get the target humidity enum value from sensors
-        humidity_enum = self.coordinator.data.sensors.humidity_setpoint
-
-        # Convert enum value (1, 2, 3) to option string ("40%", "50%", "60%")
-        key = int(humidity_enum)
+        key = int(self.coordinator.data.sensors.humidity_setpoint)
         return TARGET_HUMIDITY_OPTIONS.get(key)
 
     @property
@@ -81,17 +78,19 @@ class PicoTargetHumiditySelect(BaseEntity, SelectEntity):
                 f"Current mode '{current_mode}' does not support target humidity selection"
             )
 
-        # Convert option string ("40%", "50%", "60%") to int (1, 2, 3)
         humidity_target_int = REVERSED_TARGET_HUMIDITY_OPTIONS.get(option)
         if humidity_target_int is None:
             raise ValueError(f"Invalid humidity option: {option}")
 
+        self._optimistic = True
+        self._attr_current_option = option
+        self.async_write_ha_state()
+
         try:
-            # Convert to TargetHumidityEnum
-            # 1 -> FORTY_PERCENT, 2 -> FIFTY_PERCENT, 3 -> SIXTY_PERCENT
             target_enum = TargetHumidityEnum(humidity_target_int)
             await self.coordinator.async_set_target_humidity(target_enum)
         except Exception as err:
+            self._optimistic = False
             _LOGGER.error("Failed to set target humidity: %s", err)
             raise HomeAssistantError(f"Failed to set target humidity: {err}") from err
 
@@ -112,9 +111,11 @@ class PicoPresetModeSelect(BaseEntity, SelectEntity):
     @property
     def current_option(self) -> str | None:
         """Return the current selected option."""
+        if self._optimistic:
+            return self._attr_current_option
         if not self.coordinator.data:
+            _LOGGER.debug("[%s] current_option: current_mode is None", self.coordinator.device_name)
             return None
-
         mode = self.coordinator.current_mode
         if mode is None:
             _LOGGER.debug("[%s] current_option: current_mode is None", self.coordinator.device_name)
@@ -132,15 +133,18 @@ class PicoPresetModeSelect(BaseEntity, SelectEntity):
         if option not in self.options:
             raise ValueError(f"Invalid mode: {option}")
 
-        # Convert preset mode string to int
         mode_int = MODE_PRESET_TO_INT.get(option)
         if mode_int is None:
             raise ValueError(f"Unknown preset mode: {option}")
 
+        self._optimistic = True
+        self._attr_current_option = option
+        self.async_write_ha_state()
+
         try:
-            # Convert int to DeviceModeEnum
             mode_enum = DeviceModeEnum(mode_int)
             await self.coordinator.async_set_mode(mode_enum)
         except Exception as err:
+            self._optimistic = False
             _LOGGER.error("Failed to set preset mode: %s", err)
             raise HomeAssistantError(f"Failed to set preset mode: {err}") from err

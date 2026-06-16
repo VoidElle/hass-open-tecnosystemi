@@ -54,6 +54,8 @@ class PicoNightModeSwitch(BaseEntity, SwitchEntity):
     @property
     def is_on(self) -> bool | None:
         """Return True if night mode is on."""
+        if self._optimistic:
+            return self._attr_is_on
         return self.coordinator.night_mode_enabled
 
     async def async_turn_on(self, **_kwargs) -> None:
@@ -65,9 +67,14 @@ class PicoNightModeSwitch(BaseEntity, SwitchEntity):
                 f"Current mode '{current_mode}' does not support night mode"
             )
 
+        self._optimistic = True
+        self._attr_is_on = True
+        self.async_write_ha_state()
+
         try:
             await self.coordinator.async_set_night_mode(True)
         except Exception as err:
+            self._optimistic = False
             _LOGGER.error("Failed to turn on night mode: %s", err)
             raise HomeAssistantError(f"Failed to turn on night mode: {err}") from err
 
@@ -80,9 +87,14 @@ class PicoNightModeSwitch(BaseEntity, SwitchEntity):
                 f"Current mode '{current_mode}' does not support night mode"
             )
 
+        self._optimistic = True
+        self._attr_is_on = False
+        self.async_write_ha_state()
+
         try:
             await self.coordinator.async_set_night_mode(False)
         except Exception as err:
+            self._optimistic = False
             _LOGGER.error("Failed to turn off night mode: %s", err)
             raise HomeAssistantError(f"Failed to turn off night mode: {err}") from err
 
@@ -102,25 +114,38 @@ class PicoLEDStatusSwitch(BaseEntity, SwitchEntity):
     @property
     def is_on(self) -> bool | None:
         """Return True if LED is on."""
+        if self._optimistic:
+            return self._attr_is_on
         if not self.coordinator.data:
             return None
-        # led_on_off_short: 1 = ON, 2 = OFF
         return self.coordinator.data.operating.led_on_off_short == 1
 
     async def async_turn_on(self, **_kwargs) -> None:
         """Turn LED on."""
         _LOGGER.debug("[%s] led_status: turn_on", self.coordinator.device_name)
+
+        self._optimistic = True
+        self._attr_is_on = True
+        self.async_write_ha_state()
+
         try:
             await self.coordinator.async_set_led_status(True)
         except Exception as err:
+            self._optimistic = False
             _LOGGER.error("Failed to turn on LED: %s", err)
             raise HomeAssistantError(f"Failed to turn on LED: {err}") from err
 
     async def async_turn_off(self, **_kwargs) -> None:
         """Turn LED off."""
         _LOGGER.debug("[%s] led_status: turn_off", self.coordinator.device_name)
+
+        self._optimistic = True
+        self._attr_is_on = False
+        self.async_write_ha_state()
+
         try:
             await self.coordinator.async_set_led_status(False)
         except Exception as err:
+            self._optimistic = False
             _LOGGER.error("Failed to turn off LED: %s", err)
             raise HomeAssistantError(f"Failed to turn off LED: {err}") from err
