@@ -101,6 +101,29 @@ Already-configured devices are automatically excluded from scan results.
 ## Limitations ⚠️
 - Both Pico and Polaris require local network access (devices must be on the same network as Home Assistant)
 
+## Troubleshooting 🔍
+
+### Integration not found after installation
+Ensure you have fully restarted Home Assistant after installing the integration. A reload of HACS alone is not sufficient.
+
+### Device scan returns no results
+- Verify the subnet you entered matches the one your devices are on (e.g. `192.168.1.0/24`).
+- Make sure the device is powered on and reachable from Home Assistant's host.
+- Check that no firewall or VLAN rule is blocking UDP (Pico) or TCP port 1235 (Polaris) traffic between Home Assistant and the device.
+- Already-configured devices are excluded from scan results. Check **Settings -> Devices & Services** if you expect to see a device that is already set up.
+
+### Entities become unavailable
+- Confirm the device IP address hasn't changed. If your router uses DHCP, consider assigning a static/reserved IP to the device.
+- Enable debug logging (see [Debugging / Logging](#debugging--logging-) below) and check the Home Assistant logs for connection errors.
+- Re-adding the integration entry with the correct IP is the quickest fix if the address has drifted.
+
+### Wrong PIN / authentication failure
+- Double-check the PIN in the device's own app or manual.
+- The PIN is sent as part of every UDP/TCP request. A mismatch will cause all entities to remain unavailable.
+
+### Changes not reflected in Home Assistant
+Both coordinators poll on a fixed interval. If an update seems delayed, you can force a refresh from **Developer Tools → Actions** by calling `homeassistant.update_entity` on the affected entity.
+
 ## Debugging / Logging 🪵
 
 To enable verbose logging, add the following to your `configuration.yaml`:

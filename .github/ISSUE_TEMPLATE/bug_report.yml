@@ -1,0 +1,71 @@
+name: Bug Report
+description: Report a problem with the Open Tecnosystemi integration
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before opening an issue, please enable debug logging and reproduce the problem.
+        See the [Debugging / Logging](https://github.com/VoidElle/hass-open-tecnosystemi#debugging--logging-) section of the README.
+
+  - type: input
+    id: version
+    attributes:
+      label: Integration version
+      description: Found in HACS or in Settings -> Devices & Services -> Open Tecnosystemi.
+      placeholder: "e.g. 3.2.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: device
+    attributes:
+      label: Device family
+      options:
+        - Pico
+        - Polaris 5X
+        - Both
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem description
+      description: What is going wrong? Be specific about which entity or feature is affected.
+      placeholder: "e.g. The fan speed select entity always shows unavailable after HA restart."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: When does it happen?
+      description: Steps to reproduce the problem, including any conditions that trigger it.
+      placeholder: |
+        1. Restart Home Assistant
+        2. Open the Pico device page
+        3. Fan speed entity shows unavailable
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Debug logs
+      description: |
+        Paste the relevant log lines here. Enable debug logging first (see README).
+        Logs without debug output will not be accepted.
+      render: text
+      placeholder: |
+        2024-01-01 12:00:00 DEBUG (MainThread) [custom_components.open_pico] ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Home Assistant version, network setup, or anything else that may be relevant.
+    validations:
+      required: false
