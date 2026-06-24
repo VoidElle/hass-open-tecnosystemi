@@ -214,7 +214,16 @@ class TestStepPicoScanConfirm:
         flow = _make_flow()
         flow._selected_ip = "192.168.1.50"
         flow._scan_pin = "1234"
-        await flow.async_step_pico_scan_confirm({"name": "Living Room Pico"})
+
+        with patch("open_pico_local_api.PicoClient") as MockPicoClient:
+            mock_instance = MagicMock()
+            mock_instance.connect = AsyncMock()
+            mock_instance.disconnect = AsyncMock()
+            MockPicoClient.return_value = mock_instance
+
+            with patch("asyncio.wait_for", return_value=None):
+                await flow.async_step_pico_scan_confirm({"name": "Living Room Pico"})
+
         flow.async_create_entry.assert_called_once()
         data = flow.async_create_entry.call_args[1]["data"]
         assert data["ip"] == "192.168.1.50"
@@ -309,10 +318,19 @@ class TestStepPolarisScanConfirm:
         flow = _make_flow()
         flow._selected_ip = "192.168.1.60"
         flow._scan_pin = "5678"
-        await flow.async_step_polaris_scan_confirm({
-            "name": "Upstairs Polaris",
-            "scan_interval": 30,
-        })
+
+        with patch("open_polaris_local_api.PolarisLocalClient") as MockClient:
+            mock_instance = MagicMock()
+            mock_instance.connect = AsyncMock()
+            mock_instance.close = AsyncMock()
+            MockClient.return_value = mock_instance
+
+            with patch("asyncio.wait_for", return_value=None):
+                await flow.async_step_polaris_scan_confirm({
+                    "name": "Upstairs Polaris",
+                    "scan_interval": 30,
+                })
+
         flow.async_create_entry.assert_called_once()
         data = flow.async_create_entry.call_args[1]["data"]
         assert data["device_type"] == "polaris"
