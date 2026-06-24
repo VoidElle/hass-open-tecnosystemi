@@ -77,16 +77,21 @@ async def _setup_pico_entry(hass: HomeAssistant, entry: ConfigEntry) -> MainCoor
     verbose: bool = entry.data.get("verbose", False)
     name_slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
-    # PicoClientManager is a singleton shared across all Pico config entries
-    if "pico_manager" not in hass.data[DOMAIN]:
-        manager = PicoClientManager(local_port=local_port, verbose=verbose)
-        try:
-            await manager.initialize()
-        except Exception as err:
-            raise ConfigEntryNotReady(f"Failed to initialize shared UDP transport: {err}") from err
-        hass.data[DOMAIN]["pico_manager"] = manager
-    else:
-        manager: PicoClientManager = hass.data[DOMAIN]["pico_manager"]
+    # PicoClientManager is a singleton shared across all Pico config entries.
+    # Guard with a lock: async_setup_entry runs concurrently for every config entry,
+    # so without a lock all entries would see "pico_manager" missing and each create
+    # their own PicoClientManager before any of them stores the result.
+    hass.data[DOMAIN].setdefault("pico_manager_lock", asyncio.Lock())
+    async with hass.data[DOMAIN]["pico_manager_lock"]:
+        if "pico_manager" not in hass.data[DOMAIN]:
+            manager = PicoClientManager(local_port=local_port, verbose=verbose)
+            try:
+                await manager.initialize()
+            except Exception as err:
+                raise ConfigEntryNotReady(f"Failed to initialize shared UDP transport: {err}") from err
+            hass.data[DOMAIN]["pico_manager"] = manager
+        else:
+            manager: PicoClientManager = hass.data[DOMAIN]["pico_manager"]
 
     device_id = f"pico_{name_slug}"
     client = manager.create_client(

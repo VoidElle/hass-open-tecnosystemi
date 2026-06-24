@@ -85,6 +85,7 @@
     },
     "error": {
       "cannot_connect": "Unable to connect to the device. Check the IP address and PIN.",
+      "timeout": "The device did not respond in time. Check that it is powered on and reachable on the network.",
       "discovery_failed": "Auto-discovery scan failed. Check your network settings.",
       "no_devices_found": "No new devices found on the network. Check input subnet. All discovered devices may already be configured."
     },

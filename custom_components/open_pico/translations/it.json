@@ -85,6 +85,7 @@
     },
     "error": {
       "cannot_connect": "Impossibile connettersi al dispositivo. Controlla l'indirizzo IP e il PIN.",
+      "timeout": "Il dispositivo non ha risposto in tempo. Verifica che sia acceso e raggiungibile in rete.",
       "discovery_failed": "Scansione auto-discovery fallita. Controlla le impostazioni di rete.",
       "no_devices_found": "Nessun nuovo dispositivo trovato in rete. Controlla la subnet inserita. I dispositivi scoperti potrebbero essere già configurati."
     },

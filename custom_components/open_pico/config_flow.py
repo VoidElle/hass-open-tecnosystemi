@@ -113,7 +113,10 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
                     timeout=10,
                 )
                 await asyncio.wait_for(client.connect(), timeout=15)
+                await asyncio.wait_for(client.get_status(), timeout=15)
                 await client.disconnect()
+            except asyncio.TimeoutError:
+                errors["base"] = "timeout"
             except Exception as err:  # noqa: BLE001
                 _LOGGER.debug("Pico manual validation failed for %s: %s", ip, err)
                 errors["base"] = "cannot_connect"
@@ -222,25 +225,44 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Confirm name for the selected Pico."""
         ip = self._selected_ip
+        errors: dict[str, str] = {}
 
         if user_input is not None:
             name = user_input["name"].strip()
             name_slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
-            await self.async_set_unique_id(f"pico_{name_slug}")
-            self._abort_if_unique_id_configured()
+            try:
+                from open_pico_local_api import PicoClient  # noqa: PLC0415
+                client = PicoClient(
+                    ip=ip,
+                    pin=self._scan_pin,
+                    device_id=f"pico_{name_slug}_cfgflow",
+                    timeout=10,
+                )
+                await asyncio.wait_for(client.connect(), timeout=15)
+                await asyncio.wait_for(client.get_status(), timeout=15)
+                await client.disconnect()
+            except asyncio.TimeoutError:
+                errors["base"] = "timeout"
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("Pico scan confirm validation failed for %s: %s", ip, err)
+                errors["base"] = "cannot_connect"
 
-            return self.async_create_entry(
-                title=name,
-                data={
-                    "device_type": "pico",
-                    "ip": ip,
-                    "pin": self._scan_pin,
-                    "name": name,
-                    "local_port": 40069,
-                    "verbose": False,
-                },
-            )
+            if not errors:
+                await self.async_set_unique_id(f"pico_{name_slug}")
+                self._abort_if_unique_id_configured()
+
+                return self.async_create_entry(
+                    title=name,
+                    data={
+                        "device_type": "pico",
+                        "ip": ip,
+                        "pin": self._scan_pin,
+                        "name": name,
+                        "local_port": 40069,
+                        "verbose": False,
+                    },
+                )
 
         return self.async_show_form(
             step_id="pico_scan_confirm",
@@ -250,6 +272,7 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
                 ),
             }),
             description_placeholders={"ip": ip},
+            errors=errors,
         )
 
     # ─── Polaris: method selection ────────────────────────────────────
@@ -299,6 +322,8 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
                 client = PolarisLocalClient(ip=ip, pin=pin, timeout=10)
                 await asyncio.wait_for(client.connect(), timeout=15)
                 await client.close()
+            except asyncio.TimeoutError:
+                errors["base"] = "timeout"
             except Exception as err:  # noqa: BLE001
                 _LOGGER.debug("Polaris manual validation failed for %s: %s", ip, err)
                 errors["base"] = "cannot_connect"
@@ -410,26 +435,39 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Confirm name and scan_interval for the selected Polaris."""
         ip = self._selected_ip
+        errors: dict[str, str] = {}
 
         if user_input is not None:
             name = user_input["name"].strip()
             scan_interval = int(user_input.get("scan_interval", 30))
             name_slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
-            await self.async_set_unique_id(f"polaris_{name_slug}")
-            self._abort_if_unique_id_configured()
+            try:
+                from open_polaris_local_api import PolarisLocalClient  # noqa: PLC0415
+                client = PolarisLocalClient(ip=ip, pin=self._scan_pin, timeout=10)
+                await asyncio.wait_for(client.connect(), timeout=15)
+                await client.close()
+            except asyncio.TimeoutError:
+                errors["base"] = "timeout"
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("Polaris scan confirm validation failed for %s: %s", ip, err)
+                errors["base"] = "cannot_connect"
 
-            return self.async_create_entry(
-                title=name,
-                data={
-                    "device_type": "polaris",
-                    "ip": ip,
-                    "pin": self._scan_pin,
-                    "name": name,
-                    "scan_interval": scan_interval,
-                    "verbose": False,
-                },
-            )
+            if not errors:
+                await self.async_set_unique_id(f"polaris_{name_slug}")
+                self._abort_if_unique_id_configured()
+
+                return self.async_create_entry(
+                    title=name,
+                    data={
+                        "device_type": "polaris",
+                        "ip": ip,
+                        "pin": self._scan_pin,
+                        "name": name,
+                        "scan_interval": scan_interval,
+                        "verbose": False,
+                    },
+                )
 
         return self.async_show_form(
             step_id="polaris_scan_confirm",
@@ -442,4 +480,5 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
                 ),
             }),
             description_placeholders={"ip": ip},
+            errors=errors,
         )
