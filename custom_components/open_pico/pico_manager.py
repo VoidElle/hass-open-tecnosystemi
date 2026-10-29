@@ -53,8 +53,8 @@ class PicoClientManager:
         ip: str,
         pin: str,
         device_id: str = None,
-        timeout: float = 15,
-        retry_attempts: int = 3,
+        timeout: float = 5,
+        retry_attempts: int = 1,
         retry_delay: float = 2.0,
         poll_jitter: float = 2.0,
     ) -> PicoClient:

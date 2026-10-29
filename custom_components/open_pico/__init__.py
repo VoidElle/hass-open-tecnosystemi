@@ -96,7 +96,7 @@ async def _setup_pico_entry(hass: HomeAssistant, entry: ConfigEntry) -> MainCoor
     device_id = f"pico_{name_slug}"
     client = manager.create_client(
         ip=ip, pin=pin, device_id=device_id,
-        timeout=15, retry_attempts=3, retry_delay=2.0,
+        timeout=5, retry_attempts=1, retry_delay=2.0,
     )
 
     try:

@@ -1,9 +1,7 @@
 """DataUpdateCoordinator for Open Pico integration."""
 
-import asyncio
 from datetime import timedelta
 import logging
-import random
 import re
 
 from homeassistant.core import HomeAssistant
@@ -14,10 +12,6 @@ from open_pico_local_api import PicoClient, PicoDeviceModel, DeviceModeEnum
 from .const import DEFAULT_SCAN_INTERVAL, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
-
-# Max jitter added to each poll cycle (seconds). Keeps multiple coordinators
-# from firing simultaneously every scan interval.
-_POLL_JITTER_MAX = 2.0
 
 class MainCoordinator(DataUpdateCoordinator):
     """The main coordinator for Open Pico devices."""
@@ -40,6 +34,9 @@ class MainCoordinator(DataUpdateCoordinator):
         self._consecutive_failures = 0
         self._max_failures_before_reset = 3
 
+        # Bumped on every command so a poll sent before it can be detected as stale
+        self._cmd_seq = 0
+
         super().__init__(
             hass,
             _LOGGER,
@@ -59,9 +56,6 @@ class MainCoordinator(DataUpdateCoordinator):
         try:
             _LOGGER.debug("[%s] Starting data update", self.device_name)
 
-            # Spread concurrent polls so devices don't always fire together.
-            await asyncio.sleep(random.uniform(0, _POLL_JITTER_MAX))
-
             # Check connection status
             if not self.client.connected:
                 _LOGGER.warning("[%s] Device not connected, attempting to reconnect...", self.device_name)
@@ -72,7 +66,12 @@ class MainCoordinator(DataUpdateCoordinator):
                     raise UpdateFailed(f"Failed to reconnect: {conn_err}") from conn_err
 
             # Get device status (independent API call)
-            status = await self.client.get_status(retry=True)
+            # A command issued while polling means the reply may predate it: poll again
+            for _ in range(3):
+                seq = self._cmd_seq
+                status = await self.client.get_status(retry=True)
+                if seq == self._cmd_seq:
+                    break
 
             if status is None:
                 raise UpdateFailed("Device returned no status data")
@@ -87,17 +86,30 @@ class MainCoordinator(DataUpdateCoordinator):
                 status.operating.speed_row
             )
 
+            self._consecutive_failures = 0
             return status
 
         except UpdateFailed:
-            # Re-raise UpdateFailed as-is
+            await self._note_failure()
             raise
         except Exception as err:
             _LOGGER.error(
                 "[%s] Error communicating with device: %s",
                 self.device_name, err, exc_info=True
             )
+            await self._note_failure()
             raise UpdateFailed(f"Error communicating with device: {err}") from err
+
+    async def _note_failure(self) -> None:
+        """Reset the IDP counter after repeated failed polls (device may have restarted)."""
+        self._consecutive_failures += 1
+        if self._consecutive_failures >= self._max_failures_before_reset:
+            _LOGGER.warning("[%s] %d failed polls, resetting IDP counter", self.device_name, self._consecutive_failures)
+            self._consecutive_failures = 0
+            try:
+                await self.client.reset_idp()
+            except Exception as err:
+                _LOGGER.debug("[%s] IDP reset failed: %s", self.device_name, err)
 
     async def async_shutdown(self) -> None:
         """Shutdown the coordinator."""
@@ -170,20 +182,23 @@ class MainCoordinator(DataUpdateCoordinator):
     async def async_turn_on(self) -> None:
         """Turn the device on."""
         _LOGGER.debug("[%s] Turning ON", self.device_name)
+        self._cmd_seq += 1
         await self.client.turn_on(retry=True)
-        await self.async_request_refresh()
+        await self.async_refresh()
 
     async def async_turn_off(self) -> None:
         """Turn the device off."""
         _LOGGER.debug("[%s] Turning OFF", self.device_name)
+        self._cmd_seq += 1
         await self.client.turn_off(retry=True)
-        await self.async_request_refresh()
+        await self.async_refresh()
 
     async def async_set_mode(self, mode: DeviceModeEnum | int) -> None:
         """Set operating mode."""
         _LOGGER.debug("[%s] Setting mode to %s", self.device_name, mode)
+        self._cmd_seq += 1
         await self.client.change_operating_mode(mode, retry=True)
-        await self.async_request_refresh()
+        await self.async_refresh()
 
     async def async_set_fan_speed(self, percentage: int) -> None:
         """Set fan speed percentage."""
@@ -192,8 +207,9 @@ class MainCoordinator(DataUpdateCoordinator):
         if not self.supports_fan_speed and percentage != 100:
             raise ValueError(f"Device does not support fan speed control in current mode ({self.current_mode})")
 
+        self._cmd_seq += 1
         await self.client.change_fan_speed(percentage, retry=True, force=True)
-        await self.async_request_refresh()
+        await self.async_refresh()
 
     async def async_set_night_mode(self, enable: bool) -> None:
         """Set night mode."""
@@ -202,14 +218,16 @@ class MainCoordinator(DataUpdateCoordinator):
         if not self.supports_night_mode:
             raise ValueError(f"Device does not support night mode in current mode ({self.current_mode})")
 
+        self._cmd_seq += 1
         await self.client.set_night_mode(enable, retry=True, force=True)
-        await self.async_request_refresh()
+        await self.async_refresh()
 
     async def async_set_led_status(self, enable: bool) -> None:
         """Set LED status."""
         _LOGGER.debug("[%s] Setting LED to %s", self.device_name, "ON" if enable else "OFF")
+        self._cmd_seq += 1
         await self.client.set_led_status(enable, retry=True)
-        await self.async_request_refresh()
+        await self.async_refresh()
 
     async def async_set_target_humidity(self, target: int) -> None:
         """Set target humidity."""
@@ -218,5 +236,6 @@ class MainCoordinator(DataUpdateCoordinator):
         if not self.supports_target_humidity:
             raise ValueError(f"Device does not support target humidity in current mode ({self.current_mode})")
 
+        self._cmd_seq += 1
         await self.client.set_target_humidity(target, retry=True, force=True)
-        await self.async_request_refresh()
+        await self.async_refresh()
