@@ -4,7 +4,7 @@
   <h1>🏠 Open Tecnosystemi</h1>
   <p><em>Home Assistant integration for Tecnosystemi Pico and Polaris 5X devices</em></p>
   <br>
-  <a href="https://github.com/VoidElle/open-pico-local-api"><img src="https://img.shields.io/badge/open--pico--local--api-v2.5.2-blue?style=flat-square&logo=github" alt="open-pico-local-api"></a>
+  <a href="https://github.com/VoidElle/open-pico-local-api"><img src="https://img.shields.io/badge/open--pico--local--api-v2.6.1-blue?style=flat-square&logo=github" alt="open-pico-local-api"></a>
   <a href="https://github.com/VoidElle/open-polaris-local-api"><img src="https://img.shields.io/badge/open--polaris--local--api-v1.2.2-blue?style=flat-square&logo=github" alt="open-polaris-local-api"></a>
   <a href="https://github.com/VoidElle/hass-open-tecnosystemi/releases"><img src="https://img.shields.io/github/v/release/VoidElle/hass-open-tecnosystemi?style=flat-square&label=version" alt="version"></a>
   <a href="https://github.com/VoidElle/hass-open-tecnosystemi/blob/master/LICENSE"><img src="https://img.shields.io/github/license/VoidElle/hass-open-tecnosystemi?style=flat-square" alt="license"></a>

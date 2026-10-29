@@ -150,7 +150,7 @@ def make_pico_operating(
     operating.speed_requested = speed_requested
     operating.speed_row = speed_row
     operating.night_mode = night_mode
-    operating.led_on_off_short = led_on_off_short
+    operating.is_led_state_on = led_on_off_short != 2
     return operating
 
 
