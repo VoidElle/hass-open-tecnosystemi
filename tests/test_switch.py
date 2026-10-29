@@ -78,6 +78,10 @@ class TestLEDStatusSwitch:
         pico_coordinator.data.operating.led_on_off_short = 1
         assert led_switch.is_on is True
 
+    def test_is_on_when_led_0(self, led_switch, pico_coordinator):
+        pico_coordinator.data.operating.led_on_off_short = 0
+        assert led_switch.is_on is True
+
     def test_is_off_when_led_2(self, led_switch, pico_coordinator):
         pico_coordinator.data.operating.led_on_off_short = 2
         assert led_switch.is_on is False

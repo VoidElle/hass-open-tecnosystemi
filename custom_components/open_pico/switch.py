@@ -116,7 +116,7 @@ class PicoLEDStatusSwitch(BaseEntity, SwitchEntity):
             return self._attr_is_on
         if not self.coordinator.data:
             return None
-        return self.coordinator.data.operating.led_on_off_short == 1
+        return self.coordinator.data.operating.led_on_off_short != 2  # 2 = off, 0 seen on a lit device
 
     async def async_turn_on(self, **_kwargs) -> None:
         """Turn LED on."""
