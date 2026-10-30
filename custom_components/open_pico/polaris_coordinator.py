@@ -51,7 +51,7 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
         self._zone_details_fetched = False
         # Serialize all TCP communications to the CU.
         # The Polaris CU has a very limited TCP stack and cannot handle
-        # concurrent connections â multiple simultaneous requests cause
+        # concurrent connections -- multiple simultaneous requests cause
         # it to stop responding entirely, requiring a physical reset.
         self._tcp_lock = asyncio.Lock()
 
@@ -148,7 +148,7 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
             )
             raise UpdateFailed(f"Error polling Polaris: {err}") from err
 
-    # âââ Helper properties âââââââââââââââââââââââââââââââââââââââââââ
+    # --- Helper properties -------------------------------------------
 
     @property
     def polaris_device(self) -> PolarisDevice | None:
@@ -158,7 +158,7 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
     def polaris_zones(self) -> list[PolarisZone]:
         return self.data.zones if self.data else []
 
-    # âââ Control methods: device-level âââââââââââââââââââââââââââââââ
+    # --- Control methods: device-level -------------------------------
 
     async def async_turn_on(self) -> None:
         """Turn device on."""
@@ -188,7 +188,7 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
         await asyncio.sleep(_CMD_SETTLE_DELAY)
         await self.async_request_refresh()
 
-    # âââ Control methods: zone-level âââââââââââââââââââââââââââââââââ
+    # --- Control methods: zone-level ---------------------------------
 
     def _find_zone(self, zone_id: int) -> PolarisZone | None:
         """Find zone by ID in current data."""
