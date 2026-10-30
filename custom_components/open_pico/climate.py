@@ -44,7 +44,8 @@ _HVAC_TO_CU: dict[HVACMode, tuple[bool, int]] = {
 _CU_TO_HVAC: dict[tuple[bool, int], HVACMode] = {v: k for k, v in _HVAC_TO_CU.items()}
 
 # Serranda (damper) position mapping for swing_mode.
-# Values sent/received via upd_zona fan_set/shu_set fields.
+# MiniDiscovery2X modules report serranda via EV/EV_set fields (not shu/shu_set).
+# Values: 0=Auto, 1=A1, 2=A2, 3=A3.
 SERRANDA_OPTIONS = {0: "Auto", 1: "A1", 2: "A2", 3: "A3"}
 SERRANDA_LABEL_TO_VALUE = {v: k for k, v in SERRANDA_OPTIONS.items()}
 
@@ -80,7 +81,7 @@ async def async_setup_entry(
     )
 
 
-# ─── Machine-level entity ────────────────────────────────────────────────────
+# âââ Machine-level entity ââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 class PolarisMainClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
     """Climate entity for the Polaris CU (global machine).
@@ -187,7 +188,7 @@ class PolarisMainClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
         self.async_write_ha_state()
 
 
-# ─── Zone-level entity ───────────────────────────────────────────────────────
+# âââ Zone-level entity âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
 
 class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
     """Climate entity for a single Polaris zone.
@@ -221,12 +222,21 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
         self._attr_unique_id = f"polaris_{coordinator.serial}_zone_{zone_id}"
 
         # Enable swing_mode for zones that have a serranda (damper) installed.
-        # Zones without serranda report shu=-1 in stato_zona.
+        # MiniDiscovery2X modules report serranda via EV/EV_set (not shu/shu_set).
+        # shu is always -1 for these modules. The coordinator merges EVâserranda
+        # when shu=-1, so we check both fields here.
         detail = coordinator.zone_details.get(zone_id, {})
-        if detail.get("shu", -1) != -1:
+        shu = detail.get("shu", -1)
+        ev_set = detail.get("EV_set", -1)
+        has_serranda = (shu != -1) or (ev_set >= 0)
+        if has_serranda:
             self._attr_supported_features |= ClimateEntityFeature.SWING_MODE
             self._attr_swing_modes = list(SERRANDA_OPTIONS.values())
             self._has_serranda = True
+            _LOGGER.debug(
+                "[Polaris] Zone %d: serranda enabled (shu=%s, EV_set=%s)",
+                zone_id, shu, ev_set,
+            )
         else:
             self._has_serranda = False
 
