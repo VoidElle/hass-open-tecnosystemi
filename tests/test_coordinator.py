@@ -16,6 +16,7 @@ def real_pico_coordinator(mock_hass, mock_pico_client):
     coord = MainCoordinator(mock_hass, mock_pico_client, "Test Device")
     coord.data = make_pico_device_model()
     coord.async_request_refresh = AsyncMock()
+    coord.async_refresh = AsyncMock()
     return coord
 
 
@@ -81,18 +82,18 @@ class TestMainCoordinatorControl:
     async def test_turn_on(self, real_pico_coordinator, mock_pico_client):
         await real_pico_coordinator.async_turn_on()
         mock_pico_client.turn_on.assert_called_once_with(retry=True)
-        real_pico_coordinator.async_request_refresh.assert_called_once()
+        real_pico_coordinator.async_refresh.assert_called_once()
 
     async def test_turn_off(self, real_pico_coordinator, mock_pico_client):
         await real_pico_coordinator.async_turn_off()
         mock_pico_client.turn_off.assert_called_once_with(retry=True)
-        real_pico_coordinator.async_request_refresh.assert_called_once()
+        real_pico_coordinator.async_refresh.assert_called_once()
 
     async def test_set_mode(self, real_pico_coordinator, mock_pico_client):
         mode = MagicMock()
         await real_pico_coordinator.async_set_mode(mode)
         mock_pico_client.change_operating_mode.assert_called_once_with(mode, retry=True)
-        real_pico_coordinator.async_request_refresh.assert_called_once()
+        real_pico_coordinator.async_refresh.assert_called_once()
 
     async def test_set_fan_speed_valid(self, real_pico_coordinator, mock_pico_client):
         real_pico_coordinator.data.support_fan_speed_control = True
@@ -165,4 +166,3 @@ class TestMainCoordinatorUpdateData:
 class TestMainCoordinatorShutdown:
     async def test_shutdown_is_noop(self, real_pico_coordinator):
         await real_pico_coordinator.async_shutdown()
-
