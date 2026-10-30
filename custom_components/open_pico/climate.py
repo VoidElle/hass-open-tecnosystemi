@@ -81,7 +81,7 @@ async def async_setup_entry(
     )
 
 
-# âââ Machine-level entity ââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# --- Machine-level entity ----------------------------------------------------
 
 class PolarisMainClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
     """Climate entity for the Polaris CU (global machine).
@@ -188,7 +188,7 @@ class PolarisMainClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
         self.async_write_ha_state()
 
 
-# âââ Zone-level entity âââââââââââââââââââââââââââââââââââââââââââââââââââââââ
+# --- Zone-level entity -------------------------------------------------------
 
 class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
     """Climate entity for a single Polaris zone.
@@ -223,7 +223,7 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
 
         # Enable swing_mode for zones that have a serranda (damper) installed.
         # MiniDiscovery2X modules report serranda via EV/EV_set (not shu/shu_set).
-        # shu is always -1 for these modules. The coordinator merges EVâserranda
+        # shu is always -1 for these modules. The coordinator merges EV->serranda
         # when shu=-1, so we check both fields here.
         detail = coordinator.zone_details.get(zone_id, {})
         shu = detail.get("shu", -1)
