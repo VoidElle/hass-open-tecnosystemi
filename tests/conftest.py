@@ -67,6 +67,19 @@ pico_api_mod = _make_stub(
 )
 sys.modules.setdefault("open_pico_local_api", pico_api_mod)
 
+class _PicoAuthError(Exception):
+    pass
+
+class _PicoCloudClient:
+    pass
+
+pico_cloud_mod = _make_stub(
+    "open_pico_local_api.cloud",
+    PicoAuthError=_PicoAuthError,
+    PicoCloudClient=_PicoCloudClient,
+)
+sys.modules.setdefault("open_pico_local_api.cloud", pico_cloud_mod)
+
 # open_polaris_local_api stubs
 class _PolarisLocalClient:
     pass

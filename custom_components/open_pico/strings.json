@@ -81,13 +81,34 @@
           "name": "Device Name",
           "scan_interval": "Polling Interval (seconds)"
         }
+      },
+      "pico_cloud": {
+        "title": "Pico - Cloud Account",
+        "description": "Use the cloud only when the device is not reachable on the local network. Enter your Tecnosystemi account credentials.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "pico_cloud_device": {
+        "title": "Select Pico Device",
+        "data": {
+          "serial": "Device",
+          "pin": "PIN",
+          "name": "Device Name",
+          "scan_interval": "Polling Interval (seconds)",
+          "command_delay": "Command Refresh Delay (seconds)"
+        }
       }
     },
     "error": {
       "cannot_connect": "Unable to connect to the device. Check the IP address and PIN.",
       "timeout": "The device did not respond in time. Check that it is powered on and reachable on the network.",
       "discovery_failed": "Auto-discovery scan failed. Check your network settings.",
-      "no_devices_found": "No new devices found on the network. All discovered devices may already be configured."
+      "no_devices_found": "No new devices found on the network. All discovered devices may already be configured.",
+      "no_cloud_devices": "No Pico devices found in this Tecnosystemi account that are not already configured.",
+      "invalid_auth": "Invalid email or password.",
+      "invalid_pin": "Wrong PIN."
     },
     "abort": {
       "already_configured": "This device is already configured."
@@ -198,7 +219,8 @@
     "setup_method": {
       "options": {
         "manual": "Manual",
-        "scan": "Scan"
+        "scan": "Scan",
+        "cloud": "Cloud (Tecnosystemi account)"
       }
     }
   }

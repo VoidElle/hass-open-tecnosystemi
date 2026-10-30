@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import uuid
 from typing import Any
 
 import voluptuous as vol
@@ -22,7 +23,7 @@ from homeassistant.helpers.selector import (
     TextSelectorType,
 )
 
-from .const import DOMAIN
+from .const import CLOUD_COMMAND_DELAY, CLOUD_SCAN_INTERVAL, DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,6 +38,9 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
         self._scan_pin: str | None = None
         self._discovered_ips: list[str] = []
         self._selected_ip: str | None = None
+        self._cloud_email: str = ""
+        self._cloud_password: str = ""
+        self._cloud_devices: list[dict] = []
 
     # ─── Step 1: pick device family ──────────────────────────────────
 
@@ -68,10 +72,12 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_pico(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Choose Pico setup method: manual or auto-scan."""
+        """Choose Pico setup method: manual, auto-scan or cloud."""
         if user_input is not None:
             if user_input["method"] == "manual":
                 return await self.async_step_pico_manual()
+            if user_input["method"] == "cloud":
+                return await self.async_step_pico_cloud()
             return await self.async_step_pico_scan()
 
         return self.async_show_form(
@@ -79,7 +85,7 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema({
                 vol.Required("method"): SelectSelector(
                     SelectSelectorConfig(
-                        options=["manual", "scan"],
+                        options=["manual", "scan", "cloud"],
                         translation_key="setup_method",
                         mode=SelectSelectorMode.LIST,
                     )
@@ -150,6 +156,168 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    # ─── Pico: cloud ──────────────────────────────────────────────────
+
+    async def async_step_pico_cloud(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Cloud account login: list the Picos of the account."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            email = user_input["email"].strip()
+            password = user_input["password"]
+
+            devices: list[dict] = []
+            client = None
+            try:
+                from open_pico_local_api.cloud import (  # noqa: PLC0415
+                    PicoAuthError,
+                    PicoCloudClient,
+                )
+                client = PicoCloudClient(email, password, timeout=15)
+                await asyncio.wait_for(client.connect(), timeout=30)
+                devices = await asyncio.wait_for(client.get_devices(), timeout=30)
+            except PicoAuthError:
+                errors["base"] = "invalid_auth"
+            except asyncio.TimeoutError:
+                errors["base"] = "timeout"
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("Pico cloud login failed: %s", err)
+                errors["base"] = "cannot_connect"
+            finally:
+                if client is not None:
+                    await client.disconnect()
+
+            if not errors:
+                used = {
+                    str(e.data.get("serial", "")).upper()
+                    for e in self._async_current_entries()
+                }
+                self._cloud_devices = [
+                    d for d in devices
+                    if d.get("LVDV_Type") == 1 and str(d["Serial"]).upper() not in used
+                ]
+                if not self._cloud_devices:
+                    errors["base"] = "no_cloud_devices"
+                else:
+                    self._cloud_email = email
+                    self._cloud_password = password
+                    return await self.async_step_pico_cloud_device()
+
+        return self.async_show_form(
+            step_id="pico_cloud",
+            data_schema=vol.Schema({
+                vol.Required("email"): TextSelector(
+                    TextSelectorConfig(type=TextSelectorType.EMAIL)
+                ),
+                vol.Required("password"): TextSelector(
+                    TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                ),
+            }),
+            errors=errors,
+        )
+
+    async def async_step_pico_cloud_device(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Pick the cloud Pico and enter its PIN and name."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            serial = user_input["serial"].strip().upper()
+            pin = user_input["pin"].strip()
+            name = user_input["name"].strip()
+            name_slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+            android_id = uuid.uuid4().hex[:16]
+            scan_interval = int(user_input.get("scan_interval", CLOUD_SCAN_INTERVAL))
+            command_delay = int(user_input.get("command_delay", CLOUD_COMMAND_DELAY))
+
+            await self.async_set_unique_id(f"pico_{name_slug}")
+            self._abort_if_unique_id_configured()
+
+            client = None
+            try:
+                from open_pico_local_api import PicoDeviceError  # noqa: PLC0415
+                from open_pico_local_api.cloud import (  # noqa: PLC0415
+                    PicoAuthError,
+                    PicoCloudClient,
+                )
+                client = PicoCloudClient(
+                    self._cloud_email,
+                    self._cloud_password,
+                    serial=serial,
+                    pin=pin,
+                    name=name,
+                    device_id=android_id,
+                )
+                await asyncio.wait_for(client.connect(), timeout=30)
+                await asyncio.wait_for(client.get_status(), timeout=30)
+            except PicoAuthError:
+                errors["base"] = "invalid_auth"
+            except PicoDeviceError as err:
+                _LOGGER.debug("Pico cloud validation failed for %s: %s", serial, err)
+                errors["base"] = (
+                    "invalid_pin" if "Wrong PIN" in str(err) else "cannot_connect"
+                )
+            except asyncio.TimeoutError:
+                errors["base"] = "timeout"
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("Pico cloud validation failed for %s: %s", serial, err)
+                errors["base"] = "cannot_connect"
+            finally:
+                if client is not None:
+                    await client.disconnect()
+
+            if not errors:
+                return self.async_create_entry(
+                    title=name,
+                    data={
+                        "device_type": "pico",
+                        "connection": "cloud",
+                        "email": self._cloud_email,
+                        "password": self._cloud_password,
+                        "serial": serial,
+                        "pin": pin,
+                        "name": name,
+                        "android_id": android_id,
+                        "scan_interval": scan_interval,
+                        "command_delay": command_delay,
+                        "verbose": True,
+                    },
+                )
+
+        return self.async_show_form(
+            step_id="pico_cloud_device",
+            data_schema=vol.Schema({
+                vol.Required("serial"): SelectSelector(
+                    SelectSelectorConfig(
+                        options=[
+                            {
+                                "value": d["Serial"],
+                                "label": f'{d["Name"]} ({d["PlantName"]})',
+                            }
+                            for d in self._cloud_devices
+                        ],
+                        mode=SelectSelectorMode.LIST,
+                    )
+                ),
+                vol.Required("pin"): TextSelector(
+                    TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                ),
+                vol.Required("name"): TextSelector(
+                    TextSelectorConfig(type=TextSelectorType.TEXT)
+                ),
+                vol.Optional("scan_interval", default=CLOUD_SCAN_INTERVAL): NumberSelector(
+                    NumberSelectorConfig(min=10, max=300, step=5, mode=NumberSelectorMode.BOX)
+                ),
+                vol.Optional("command_delay", default=CLOUD_COMMAND_DELAY): NumberSelector(
+                    NumberSelectorConfig(min=0, max=30, step=1, mode=NumberSelectorMode.BOX)
+                ),
+            }),
+            errors=errors,
+        )
+
     # - Pico: auto-scan
 
     async def async_step_pico_scan(
@@ -176,7 +344,7 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
 
             if not errors:
                 configured = {
-                    e.data["ip"]
+                    e.data.get("ip")  # cloud entries have no ip
                     for e in self._async_current_entries()
                     if e.data.get("device_type") == "pico"
                 }

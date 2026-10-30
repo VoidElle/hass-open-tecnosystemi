@@ -1,12 +1,12 @@
 ---
 name: pico
-description: Expert agent for the Pico ventilation/air quality device integration. Use when working on the UDP protocol, PicoClientManager, SharedTransportManager, MainCoordinator, or any Pico entities (fan, sensor, switch, select, button, binary_sensor).
+description: Expert agent for the Pico ventilation/air quality device integration. Use when working on the UDP protocol, the cloud fallback (PicoCloudClient), PicoClientManager, SharedTransportManager, MainCoordinator, or any Pico entities (fan, sensor, switch, select, button, binary_sensor).
 ---
 
 # Hassio Open Pico — Pico Device Integration
 
 Home Assistant custom integration for Tecnosystemi **Pico** ventilation/air quality devices.  
-Protocol: **local UDP**, listen port `40069`, send to device port `40070`. No cloud dependency.
+Protocol: **local UDP**, listen port `40069`, send to device port `40070`. Optional **cloud fallback** (HTTPS, vendor backend) for devices not reachable on the LAN; see [Cloud fallback](#cloud-fallback-picocloudclient).
 
 ---
 
@@ -33,7 +33,8 @@ Config schema lives in `__init__.py` (`PICO_DEVICE_SCHEMA`, `CONFIG_SCHEMA`).
 2. Create `PicoClientManager` -> `initialize()` (binds shared UDP socket on `local_port`)
 3. For each device: `manager.create_client(ip, pin, ...)` -> `client.connect()` -> create `MainCoordinator` -> `async_refresh()`
 4. Append coordinator to `hass.data[DOMAIN]["coordinators"]`
-5. Load platforms via `discovery.async_load_platform` for all `PICO_PLATFORMS`
+5. Cloud branch (`entry.data["connection"] == "cloud"`): `_setup_pico_entry` builds `PicoCloudClient` directly (HTTPS, no `PicoClientManager`), `PicoAuthError` -> `ConfigEntryError`, other connect errors -> `ConfigEntryNotReady`; coordinator gets `scan_interval` / `command_delay` from `entry.data` (defaults `CLOUD_SCAN_INTERVAL`, `CLOUD_COMMAND_DELAY`). Unload calls `client.disconnect()`; the manager shutdown check counts only local entries.
+6. Load platforms via `discovery.async_load_platform` for all `PICO_PLATFORMS`
 
 ### hass.data layout
 ```python
@@ -212,13 +213,44 @@ coordinator.async_set_target_humidity(target: int) # raises if mode unsupported
 
 ---
 
+## Cloud fallback (`PicoCloudClient`)
+
+Used only for entries with `entry.data["connection"] == "cloud"` (entries without the key are local). Never make it automatic: local UDP stays the primary path.
+
+### Entry data
+`device_type: "pico"`, `connection: "cloud"`, `name`, `pin`, `email`, `password`, `serial` (upper-case), `android_id` (16 hex, generated once per entry), `scan_interval`, `command_delay`, `verbose`. Read both intervals with `.get()` + default.
+
+### Config flow (`config_flow.py`)
+`pico` step `setup_method == "cloud"` -> `async_step_pico_cloud` (email/password, login + `get_devices()`, keeps `LVDV_Type == 1` not yet configured) -> `async_step_pico_cloud_device` (serial select, PIN, name; generates `android_id`, validates with a fresh client `connect()` + `get_status()`, wrong PIN -> `invalid_pin`). Client is always disconnected after validation.
+
+### Setup (`__init__.py -> _setup_pico_entry`)
+- `PicoCloudClient(email, password, serial, pin, name, device_id=android_id, timeout=15, retry_attempts=2, retry_delay=2.0, verbose)`. `device_id` is the `android_id` (AES key seed sent at login), not an HA id
+- No `PicoClientManager` / UDP transport. `client.ip == "cloud"`, `coordinator.pico_ip` = serial in logs
+- `connect()` (30 s): `PicoAuthError` -> `ConfigEntryError`, anything else -> `ConfigEntryNotReady`
+- `MainCoordinator(..., scan_interval=entry.data.get("scan_interval", CLOUD_SCAN_INTERVAL), command_delay=entry.data.get("command_delay", CLOUD_COMMAND_DELAY))`. Defaults 30 s / 3 s; the user sets both in the `pico_cloud_device` step (10-300 s step 5, 0-30 s), same pattern as Polaris `scan_interval`
+- Unload: `client.disconnect()` (closes the aiohttp session); manager shutdown counts only local Pico entries
+
+### Status and commands
+- `get_status()` -> `GET GetPICOState`. `ResDescr` = backend `frm:"db"` record (control fields only) + `lastpk` (JSON string of the device's last `stato_sync`). Since library **2.6.2** `lastpk` is decoded and wins; flat fields only fill missing keys. Result is a normal `PicoDeviceModel`, same values as local: sensors, `par_rt`/`par_mm`, `memfree`, `is_led_state_on` are real
+- Before 2.6.2 cloud sensors were all `0` and an off LED read as on (db encodes `led_on_off_breve` off as `0`, device sends `2`). Never pin `open-pico-local-api` below `2.6.2`, and never add integration-side workarounds for these
+- `data.device_info.name` is the name stored on the device (account name is in `raw_data["name"]`). Entities use `coordinator.device_name` (entry name), so this does not matter here
+- Commands are inherited from `PicoClient` and return after the **cloud ack** only (no `res: 99`); the device applies them asynchronously, hence `command_delay` before `_refresh_after_command()` refreshes
+- `reset_idp()` only resets the client counter; `bruteforce_idp()` raises `NotSupportedError`. Session re-login is automatic (55 min or HTTP 401)
+
+### Debugging
+- Bad credentials -> `PicoAuthError` (subclass of `PicoDeviceError`, import from `open_pico_local_api.cloud`). Wrong PIN -> `PicoDeviceError("Wrong PIN")`
+- State flips back after a command: backend has not applied it yet; raise the entry's command delay (re-add the entry with a higher value, e.g. 6), do not drop the refresh
+- `verbose: true` logs every HTTP request/response; logs contain email and PIN, redact before sharing
+
+---
+
 ## Entities
 
 ### `BaseEntity` (`base.py`)
 - Extends `CoordinatorEntity[MainCoordinator]`
 - `_attr_has_entity_name = True`
 - `available`: `coordinator.last_update_success and coordinator.data is not None`
-- `device_info`: identifiers `(DOMAIN, coordinator.pico_ip)`, name from `data.device_info.name`, manufacturer `"Tecnosystemi"`, model `f"Model {device_info.model}"`, sw_version `device_info.firmware_version`
+- `device_info`: identifiers `(DOMAIN, coordinator.family_name)`, name `coordinator.device_name` (entry name, not `data.device_info.name`), manufacturer `"Tecnosystemi"`, model `f"Model {device_info.model}"`, sw_version `device_info.firmware_version`
 - `unique_id` pattern: `f"{DOMAIN}_{entity_type}_{coordinator.pico_ip.replace('.', '_')}"`
 
 ### Platform summary

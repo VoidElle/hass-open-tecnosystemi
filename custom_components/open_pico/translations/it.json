@@ -81,13 +81,34 @@
           "name": "Nome Dispositivo",
           "scan_interval": "Intervallo di Polling (secondi)"
         }
+      },
+      "pico_cloud": {
+        "title": "Pico - Account Cloud",
+        "description": "Usa il cloud solo se il dispositivo non è raggiungibile nella rete locale. Inserisci le credenziali dell'account Tecnosystemi.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "pico_cloud_device": {
+        "title": "Seleziona Dispositivo Pico",
+        "data": {
+          "serial": "Dispositivo",
+          "pin": "PIN",
+          "name": "Nome Dispositivo",
+          "scan_interval": "Intervallo di Polling (secondi)",
+          "command_delay": "Attesa Aggiornamento dopo Comando (secondi)"
+        }
       }
     },
     "error": {
       "cannot_connect": "Impossibile connettersi al dispositivo. Controlla l'indirizzo IP e il PIN.",
       "timeout": "Il dispositivo non ha risposto in tempo. Verifica che sia acceso e raggiungibile in rete.",
       "discovery_failed": "Scansione auto-discovery fallita. Controlla le impostazioni di rete.",
-      "no_devices_found": "Nessun nuovo dispositivo trovato in rete. Controlla la subnet inserita. I dispositivi scoperti potrebbero essere già configurati."
+      "no_devices_found": "Nessun nuovo dispositivo trovato in rete. Controlla la subnet inserita. I dispositivi scoperti potrebbero essere già configurati.",
+      "no_cloud_devices": "Nessun dispositivo Pico non ancora configurato trovato in questo account Tecnosystemi.",
+      "invalid_auth": "Email o password non valide.",
+      "invalid_pin": "PIN errato."
     },
     "abort": {
       "already_configured": "Questo dispositivo è già configurato."
@@ -198,7 +219,8 @@
     "setup_method": {
       "options": {
         "manual": "Manuale",
-        "scan": "Scansione"
+        "scan": "Scansione",
+        "cloud": "Cloud (account Tecnosystemi)"
       }
     }
   }

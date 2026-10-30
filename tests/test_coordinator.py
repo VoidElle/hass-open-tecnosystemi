@@ -15,7 +15,7 @@ def real_pico_coordinator(mock_hass, mock_pico_client):
     from custom_components.open_pico.coordinator import MainCoordinator
     coord = MainCoordinator(mock_hass, mock_pico_client, "Test Device")
     coord.data = make_pico_device_model()
-    coord.async_request_refresh = AsyncMock()
+    coord.async_refresh = AsyncMock()
     return coord
 
 
@@ -77,22 +77,47 @@ class TestMainCoordinatorProperties:
         assert real_pico_coordinator.supports_target_humidity is True
 
 
+class TestMainCoordinatorPolling:
+    async def test_repolls_when_command_lands_during_poll(self, real_pico_coordinator, mock_pico_client):
+        async def get_status(retry=True):
+            if mock_pico_client.get_status.await_count == 1:
+                real_pico_coordinator._cmd_seq += 1  # command issued while the first poll is in flight
+            return make_pico_device_model()
+
+        mock_pico_client.get_status = AsyncMock(side_effect=get_status)
+        await real_pico_coordinator.async_update_data()
+        assert mock_pico_client.get_status.await_count == 2
+
+    async def test_no_repoll_without_command(self, real_pico_coordinator, mock_pico_client):
+        await real_pico_coordinator.async_update_data()
+        mock_pico_client.get_status.assert_awaited_once()
+
+    async def test_resets_idp_after_repeated_failures(self, real_pico_coordinator, mock_pico_client):
+        from homeassistant.helpers.update_coordinator import UpdateFailed
+        mock_pico_client.reset_idp = AsyncMock()
+        mock_pico_client.get_status = AsyncMock(return_value=None)
+        for _ in range(3):
+            with pytest.raises(UpdateFailed):
+                await real_pico_coordinator.async_update_data()
+        mock_pico_client.reset_idp.assert_awaited_once()
+
+
 class TestMainCoordinatorControl:
     async def test_turn_on(self, real_pico_coordinator, mock_pico_client):
         await real_pico_coordinator.async_turn_on()
         mock_pico_client.turn_on.assert_called_once_with(retry=True)
-        real_pico_coordinator.async_request_refresh.assert_called_once()
+        real_pico_coordinator.async_refresh.assert_called_once()
 
     async def test_turn_off(self, real_pico_coordinator, mock_pico_client):
         await real_pico_coordinator.async_turn_off()
         mock_pico_client.turn_off.assert_called_once_with(retry=True)
-        real_pico_coordinator.async_request_refresh.assert_called_once()
+        real_pico_coordinator.async_refresh.assert_called_once()
 
     async def test_set_mode(self, real_pico_coordinator, mock_pico_client):
         mode = MagicMock()
         await real_pico_coordinator.async_set_mode(mode)
         mock_pico_client.change_operating_mode.assert_called_once_with(mode, retry=True)
-        real_pico_coordinator.async_request_refresh.assert_called_once()
+        real_pico_coordinator.async_refresh.assert_called_once()
 
     async def test_set_fan_speed_valid(self, real_pico_coordinator, mock_pico_client):
         real_pico_coordinator.data.support_fan_speed_control = True
@@ -128,6 +153,34 @@ class TestMainCoordinatorControl:
         real_pico_coordinator.data.support_target_humidity_selection = False
         with pytest.raises(ValueError, match="does not support"):
             await real_pico_coordinator.async_set_target_humidity(2)
+
+
+class TestMainCoordinatorCloudTiming:
+    def test_default_interval(self, real_pico_coordinator):
+        assert real_pico_coordinator.update_interval == timedelta(seconds=5)
+
+    def test_scan_interval_honoured(self, mock_hass, mock_pico_client):
+        from custom_components.open_pico.coordinator import MainCoordinator
+        coord = MainCoordinator(mock_hass, mock_pico_client, "Test", scan_interval=30)
+        assert coord.update_interval == timedelta(seconds=30)
+
+    async def test_command_delay_sleeps_before_refresh(self, mock_hass, mock_pico_client):
+        from custom_components.open_pico.coordinator import MainCoordinator
+        coord = MainCoordinator(mock_hass, mock_pico_client, "Test", command_delay=3)
+        coord.async_refresh = AsyncMock()
+        with patch("custom_components.open_pico.coordinator.asyncio.sleep", new=AsyncMock()) as sleep:
+            await coord.async_turn_on()
+        sleep.assert_awaited_once_with(3)
+        coord.async_refresh.assert_awaited_once()
+
+    async def test_no_delay_no_sleep(self, mock_hass, mock_pico_client):
+        from custom_components.open_pico.coordinator import MainCoordinator
+        coord = MainCoordinator(mock_hass, mock_pico_client, "Test")
+        coord.async_refresh = AsyncMock()
+        with patch("custom_components.open_pico.coordinator.asyncio.sleep", new=AsyncMock()) as sleep:
+            await coord.async_turn_on()
+        sleep.assert_not_awaited()
+        coord.async_refresh.assert_awaited_once()
 
 
 class TestMainCoordinatorUpdateData:

@@ -4,7 +4,7 @@
   <h1>🏠 Open Tecnosystemi</h1>
   <p><em>Home Assistant integration for Tecnosystemi Pico and Polaris 5X devices</em></p>
   <br>
-  <a href="https://github.com/VoidElle/open-pico-local-api"><img src="https://img.shields.io/badge/open--pico--local--api-v2.6.1-blue?style=flat-square&logo=github" alt="open-pico-local-api"></a>
+  <a href="https://github.com/VoidElle/open-pico-local-api"><img src="https://img.shields.io/badge/open--pico--local--api-v2.6.2-blue?style=flat-square&logo=github" alt="open-pico-local-api"></a>
   <a href="https://github.com/VoidElle/open-polaris-local-api"><img src="https://img.shields.io/badge/open--polaris--local--api-v1.2.2-blue?style=flat-square&logo=github" alt="open-polaris-local-api"></a>
   <a href="https://github.com/VoidElle/hass-open-tecnosystemi/releases"><img src="https://img.shields.io/github/v/release/VoidElle/hass-open-tecnosystemi?style=flat-square&label=version" alt="version"></a>
   <a href="https://github.com/VoidElle/hass-open-tecnosystemi/blob/master/LICENSE"><img src="https://img.shields.io/github/license/VoidElle/hass-open-tecnosystemi?style=flat-square" alt="license"></a>
@@ -69,6 +69,16 @@ Instead of entering the IP manually, both Pico and Polaris support network scann
 4. Select a device and give it a name
 
 Already-configured devices are automatically excluded from scan results.
+
+### Cloud fallback
+
+Use **Cloud** only when the Pico is not reachable on your local network.
+
+1. Select **Cloud** as the setup method
+2. Enter your Tecnosystemi account email and password
+3. Pick the device, then enter its PIN and a name
+
+Notes: state is polled every 30 seconds and the refresh after a command waits 3 seconds, because the vendor backend applies commands with a short delay. Both values can be changed in the device step (raise the command delay if the state flips back after a command). The account credentials are stored in the config entry. Polaris is not supported in cloud mode.
 
 ## Features ✨
 

@@ -4,6 +4,10 @@ DOMAIN = "open_pico"
 
 DEFAULT_SCAN_INTERVAL = 5
 
+# Cloud (vendor backend): poll slower, commands are applied asynchronously
+CLOUD_SCAN_INTERVAL = 30
+CLOUD_COMMAND_DELAY = 3
+
 # Device mode mapping - single source of truth
 MODE_INT_TO_PRESET = {
     1: "heat_recovery",

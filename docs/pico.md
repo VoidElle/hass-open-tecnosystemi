@@ -26,6 +26,13 @@ Fields required at config flow:
 3. Already-configured devices are excluded from results
 4. Select a discovered IP, assign a name
 
+### Cloud
+Fallback for a Pico not reachable on the LAN. Entry data has `"connection": "cloud"` (entries without the key are local).
+1. Enter Tecnosystemi account email and password
+2. Select the device, enter its PIN and a name
+
+Uses `PicoCloudClient` (HTTPS) instead of UDP. Polled every 30 s by default (`CLOUD_SCAN_INTERVAL`); after a command the coordinator waits 3 s by default (`CLOUD_COMMAND_DELAY`) before refreshing because the backend applies it asynchronously. Both are set in the device step (polling 10-300 s, command delay 0-30 s). Email, password and an `android_id` are stored in the config entry.
+
 ---
 
 ## Entities
@@ -124,10 +131,10 @@ When night mode is active, fan speed control is disabled.
 ---
 
 ## Update Interval
-Default: **5 seconds** (`DEFAULT_SCAN_INTERVAL` in `const.py`).
+Default: **5 seconds** (`DEFAULT_SCAN_INTERVAL` in `const.py`). Cloud entries: **30 seconds** by default (`CLOUD_SCAN_INTERVAL`), configurable at setup.
 
 ## Multi-Device Support
-Multiple Pico devices share one UDP socket. The `PicoClientManager` singleton is created on first Pico entry setup and destroyed when the last Pico entry is removed.
+Multiple Pico devices share one UDP socket. The `PicoClientManager` singleton is created on first Pico entry setup and destroyed when the last local Pico entry is removed. Cloud entries do not use it.
 
 ## Error Handling
 - If device is unreachable on poll, coordinator attempts reconnect automatically.
