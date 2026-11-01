@@ -23,7 +23,7 @@ Open Tecnosystemi is a Home Assistant integration that enables management of Tec
 - **Pico** - Local UDP-based ventilation and air quality units
 - **Polaris 5X** - Local TCP-based HVAC zone controllers
 
-Both device families communicate **entirely over your local network**, requiring no cloud connectivity.
+Both device families communicate **entirely over your local network**, requiring no cloud connectivity (in most of the cases).
 
 ## Installation 📦
 ### Via HACS (Recommended) ⭐
