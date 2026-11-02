@@ -25,8 +25,12 @@ POLARIS_SCAN_INTERVAL = 30
 # soon returns stale state, causing the UI to "bounce back".
 _CMD_SETTLE_DELAY = 1.0
 
-# Maximum number of attempts to fetch zone details before giving up.
-_MAX_ZONE_DETAIL_ATTEMPTS = 3
+# Maximum zone detail requests per poll cycle.
+# Fetching all zones at once can exceed the setup timeout (30s) or
+# overwhelm the CU.  Instead, fetch a few zones per poll cycle and
+# accumulate results across polls.
+_ZONE_DETAILS_PER_POLL = 2
+
 
 @dataclass
 class PolarisData:
@@ -51,8 +55,6 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
         self.device_name = device_name
         self.polaris_ip = client.ip
         self._zone_details: dict[int, dict] = {}
-        self._zone_details_fetched = False
-        self._zone_detail_attempts = 0
         # Serialize all TCP communications to the CU.
         # The Polaris CU has a very limited TCP stack and cannot handle
         # concurrent connections -- multiple simultaneous requests cause
@@ -74,40 +76,85 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
             return self.client.device.serial
         return self.client.ip.replace(".", "_")
 
+    # ─── Zone detail fetching (incremental) ──────────────────────────
+
+    def _zones_needing_details(self, zones: list[PolarisZone]) -> list[PolarisZone]:
+        """Return zones that still need stato_zona data.
+
+        Skips zones that already have details cached and zones with
+        errors (num_error != 0), whose stato_zona data is unreliable.
+        """
+        return [
+            z for z in zones
+            if z.zone_id not in self._zone_details and not z.num_error
+        ]
+
+    @property
+    def all_zone_details_fetched(self) -> bool:
+        """True when every non-errored zone has cached details."""
+        if not self.data or not self.data.zones:
+            return False
+        return len(self._zones_needing_details(self.data.zones)) == 0
+
+    async def _async_fetch_zone_details_incremental(
+        self, zones: list[PolarisZone],
+    ) -> None:
+        """Fetch stato_zona for a few zones per call, storing each result
+        immediately so partial progress is never lost.
+
+        Called inside _tcp_lock during each poll cycle until all zones
+        have details.  Fetches at most _ZONE_DETAILS_PER_POLL zones
+        per cycle to stay well under the 30s setup timeout and avoid
+        overwhelming the CU.
+        """
+        pending = self._zones_needing_details(zones)
+        if not pending:
+            return
+
+        batch = pending[:_ZONE_DETAILS_PER_POLL]
+        for zone in batch:
+            try:
+                detail = await self.client.get_zone_detail(zone.zone_id)
+                if detail:
+                    self._zone_details[zone.zone_id] = detail
+                    _LOGGER.debug(
+                        "[%s] Fetched details for zone %d (%s)",
+                        self.device_name, zone.zone_id, zone.name,
+                    )
+                await asyncio.sleep(1)  # 1s spacing between stato_zona requests
+            except Exception as err:
+                _LOGGER.warning(
+                    "[%s] Failed to fetch details for zone %d: %s",
+                    self.device_name, zone.zone_id, err,
+                )
+                # Don't cache anything — will retry on next poll
+
+        remaining = len(pending) - len(batch)
+        if remaining > 0:
+            _LOGGER.debug(
+                "[%s] Zone details: %d cached, %d remaining",
+                self.device_name, len(self._zone_details), remaining,
+            )
+        else:
+            _LOGGER.info(
+                "[%s] All zone details fetched (%d zones)",
+                self.device_name, len(self._zone_details),
+            )
+
+    # ─── Main update ─────────────────────────────────────────────────
+
     async def _async_update_data(self) -> PolarisData:
         """Fetch device + zone data via local TCP."""
         try:
             async with self._tcp_lock:
                 device, zones = await self.client.async_update()
 
-                # Fetch zone details (serranda/fancoil) on first successful update.
+                # Incrementally fetch zone details (serranda/fancoil).
                 # stato_zona returns per-zone data not included in stato_r.
-                # Size timeout to zone count: each zone sleeps 1s + client timeout.
-                if not self._zone_details_fetched and zones:
-                    if self._zone_detail_attempts < _MAX_ZONE_DETAIL_ATTEMPTS:
-                        self._zone_detail_attempts += 1
-                        try:
-                            budget = len(zones) * (1 + self.client.timeout) + 5
-                            async with asyncio.timeout(budget):
-                                self._zone_details = await self.client.fetch_all_zone_details()
-                            self._zone_details_fetched = True
-                            _LOGGER.info(
-                                "[%s] Fetched zone details for %d zones",
-                                self.device_name, len(self._zone_details),
-                            )
-                        except Exception as err:
-                            _LOGGER.warning(
-                                "[%s] Failed to fetch zone details (attempt %d/%d): %s",
-                                self.device_name,
-                                self._zone_detail_attempts,
-                                _MAX_ZONE_DETAIL_ATTEMPTS,
-                                err,
-                            )
-                            # Only give up after max attempts
-                            if self._zone_detail_attempts >= _MAX_ZONE_DETAIL_ATTEMPTS:
-                                self._zone_details_fetched = True
-                    else:
-                        self._zone_details_fetched = True
+                # We fetch a few zones per poll cycle and accumulate results,
+                # so a single slow/errored zone never blocks the others.
+                if zones and not self.all_zone_details_fetched:
+                    await self._async_fetch_zone_details_incremental(zones)
 
             # Merge cached serranda/fancoil data into zones (no TCP needed).
             # MiniDiscovery2X modules report serranda in EV/EV_set fields
