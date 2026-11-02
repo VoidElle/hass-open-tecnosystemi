@@ -347,13 +347,23 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
 
     @property
     def swing_mode(self) -> str | None:
-        """Return current serranda (damper) position."""
+        """Return current serranda (damper) position.
+
+        Reads from coordinator.zone_details (the stato_zona cache) rather
+        than zone.serranda_set, because we intentionally do NOT merge
+        serranda data into PolarisZone objects — doing so would cause the
+        library's update_zone() to send shu_set on every command.
+        """
         if not self._has_serranda:
             return None
-        zone = self._zone
-        if not zone:
+        detail = self._coordinator.zone_details.get(self._zone_id, {})
+        if not detail:
             return None
-        return SERRANDA_OPTIONS.get(zone.serranda_set, "Auto")
+        # MiniDiscovery2X: use EV_set; Stealth2X: use shu_set
+        shu_set = detail.get("shu_set", -1)
+        if shu_set == -1:
+            shu_set = detail.get("EV_set", -1)
+        return SERRANDA_OPTIONS.get(shu_set, "Auto")
 
     async def async_set_swing_mode(self, swing_mode: str) -> None:
         """Set serranda (damper) position: Auto, A1, A2, A3."""
