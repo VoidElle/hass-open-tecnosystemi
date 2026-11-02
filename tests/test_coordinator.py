@@ -15,6 +15,7 @@ def real_pico_coordinator(mock_hass, mock_pico_client):
     from custom_components.open_pico.coordinator import MainCoordinator
     coord = MainCoordinator(mock_hass, mock_pico_client, "Test Device")
     coord.data = make_pico_device_model()
+    coord.async_request_refresh = AsyncMock()
     coord.async_refresh = AsyncMock()
     return coord
 
@@ -218,4 +219,3 @@ class TestMainCoordinatorUpdateData:
 class TestMainCoordinatorShutdown:
     async def test_shutdown_is_noop(self, real_pico_coordinator):
         await real_pico_coordinator.async_shutdown()
-
