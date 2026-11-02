@@ -2,7 +2,7 @@
 
 Home Assistant integration for **Tecnosystemi Pico** (ventilation/air quality) and **Polaris 5X** (HVAC zone controllers).
 
-Both device families communicate **entirely over the local network** — no cloud required.
+Both device families communicate **over the local network**. Pico also has an optional cloud fallback for units not reachable on the LAN.
 
 ---
 
@@ -23,7 +23,7 @@ Both device families communicate **entirely over the local network** — no clou
 - Devices on the same local network as Home Assistant
 
 ### Installation
-Via HACS (recommended): add `https://github.com/VoidElle/hass-open-tecnosystemi` as a custom repository, install, restart HA.
+Via HACS (recommended): the integration is in the HACS Default repository. Search **Open Tecnosystemi** in HACS, download, restart HA.
 
 Manual: copy `custom_components/open_pico/` into your HA `custom_components/` directory, restart.
 
@@ -31,7 +31,7 @@ Manual: copy `custom_components/open_pico/` into your HA `custom_components/` di
 1. **Settings → Devices & Services → + Add Integration**
 2. Search **Open Tecnosystemi**
 3. Choose device family: **Pico** or **Polaris**
-4. Choose setup method: **Manual** (enter IP/PIN/name) or **Scan** (subnet discovery)
+4. Choose setup method: **Manual** (enter IP/PIN/name), **Scan** (subnet discovery) or, Pico only, **Cloud** (Tecnosystemi account)
 
 ---
 

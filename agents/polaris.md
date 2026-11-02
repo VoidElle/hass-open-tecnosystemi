@@ -1,48 +1,30 @@
 ---
 name: polaris
-description: Expert agent for the Polaris HVAC integration. Use when working on Polaris TCP protocol, PolarisCoordinator, PolarisLocalClient, climate entities, or anything in polaris_api/ or polaris_coordinator.py.
+description: Expert agent for the Polaris HVAC integration. Use when working on Polaris TCP protocol, PolarisCoordinator, PolarisLocalClient, climate entities, or anything in the open-polaris-local-api package or polaris_coordinator.py.
 ---
 
 # Polaris Integration — Agent Memory
 
-Root of this repository. Install as HA custom integration at `custom_components/hassio_open_pico/`.
+Integration lives in `custom_components/open_pico/`. The TCP client and models come from the `open-polaris-local-api` package (pinned in `manifest.json`), not from this repo.
 
 ---
 
-## YAML Config
+## Configuration (UI only)
 
-```yaml
-open_pico:
-  polaris_devices:
-    - ip: "192.168.1.x"
-      pin: "1234"
-      name: "Polaris CU"     # optional
-      scan_interval: 30      # seconds, min 10, default 30
-```
+No YAML. Each Polaris CU is one config entry from **Add Integration -> Open Pico -> Polaris** (`config_flow.py`): `polaris` -> `polaris_manual` | `polaris_scan` -> `polaris_scan_results` -> `polaris_scan_confirm`.
 
-Config schema: `POLARIS_DEVICE_SCHEMA` in `__init__.py`. `scan_interval < 10` rejected by voluptuous.
+Entry data: `device_type: "polaris"`, `ip`, `pin`, `name`, `scan_interval` (NumberSelector 10-300 s, step 5, default 30), `verbose`.
 
 ---
 
-## Setup Flow (`__init__.py -> _setup_polaris_devices`)
+## Setup Flow (`__init__.py -> async_setup_entry -> _setup_polaris_entry`)
 
-For each device:
-1. Create `PolarisLocalClient(ip, pin, port=1235, timeout=5.0, retry_attempts=2, retry_delay=1.0)`
-2. `client.connect()` -> calls `async_update()` -> performs first TCP poll
-3. Create `PolarisCoordinator(hass, client, device_name, scan_interval)`
-4. `await coordinator.async_config_entry_first_refresh()` with 30s timeout
-5. Append to `hass.data[DOMAIN]["polaris_coordinators"]`
-6. Load `POLARIS_PLATFORMS = [Platform.CLIMATE, Platform.SENSOR]` via `discovery.async_load_platform`
-
-### hass.data layout
-```python
-hass.data[DOMAIN] = {
-    "coordinators": [MainCoordinator, ...],          # Pico devices
-    "polaris_coordinators": [PolarisCoordinator, ...],
-    "manager": PicoClientManager,
-    "config": domain_config,
-}
-```
+1. Create `PolarisLocalClient(ip, pin, device_id=f"polaris_{name_slug}", port=1235, timeout=15, retry_attempts=3, retry_delay=2.0, verbose)`
+2. `client.connect()` (30 s) -> failure `ConfigEntryNotReady`
+3. Create `PolarisCoordinator(hass, client, name, scan_interval=scan_interval)`
+4. `coordinator.async_refresh()` (30 s); failure -> `client.close()` + `ConfigEntryNotReady`
+5. Store in `hass.data[DOMAIN][entry.entry_id] = {"coordinator": ..., "device_type": "polaris"}`
+6. `async_forward_entry_setups(entry, POLARIS_PLATFORMS)`, `POLARIS_PLATFORMS = [Platform.CLIMATE, Platform.SENSOR, Platform.BINARY_SENSOR]`
 
 ---
 
@@ -76,6 +58,13 @@ if response.get("res") == 4:
     response = await self._send_command_with_retry(cmd)
 ```
 **Never send `stato_sync` over TCP** — cloud/HTTP only.
+
+### Command: Zone detail — `stato_zona`
+```json
+{"c": "stato_zona", "pin": "<pin>", "id_zona": 1}
+```
+Returns per-zone fields missing from `stato`/`stato_r`: `fan`, `fan_set`, `shu`, `shu_set`, `EV`, `EV_set`, `v` (fw), `m` (model). `-1` = hardware not installed.
+`client.fetch_all_zone_details()` queries every zone without errors (`num_error == 0`, off zones included), 1 s apart, and writes `serranda`/`serranda_set`/`fancoil`/`fancoil_set` into the cached zones.
 
 ### Command: Device-level update — `upd_cu`
 ```json
@@ -126,7 +115,7 @@ if response.get("res") == 4:
 
 ---
 
-## Data Models (`polaris_api/models.py`)
+## Data Models (`open-polaris-local-api` package)
 
 ### `PolarisDevice`
 ```python
@@ -196,13 +185,16 @@ Parsed via `PolarisZone.from_local(data)` — handles ridotto, full, and cloud P
 
 ---
 
-## Client (`polaris_api/polaris_client.py`)
+## Client (`open-polaris-local-api` package)
 
 ### `PolarisLocalClient`
 ```python
-client = PolarisLocalClient(ip, pin, port=1235, timeout=5.0,
+# library defaults
+client = PolarisLocalClient(ip, pin, device_id=None, port=1235, timeout=5.0,
                              retry_attempts=2, retry_delay=1.0, verbose=False)
 ```
+The integration overrides them: setup uses `timeout=15, retry_attempts=3, retry_delay=2.0`; config flow validation uses `timeout=10`.
+`_send_command_with_retry` returns `None` after all attempts fail; `get_status()` turns that into `TimeoutError`, `update_zone`/`update_cu` only log a warning.
 - `connect()` -> calls `async_update()` -> sets `_connected=True`, caches `_device`/`_zones`
 - `disconnect()` / `close()` -> sets `_connected=False` (TCP is stateless per-command)
 - `async_update()` -> `get_status()` -> `PolarisDevice.from_local()` + `PolarisZone.from_local()` for each zone
@@ -217,6 +209,9 @@ client.update_zone(zone, *, is_off, set_temp, is_crono, fancoil_set, serranda_se
 client.set_zone_temp(zone, temperature)   # update_zone(zone, set_temp=temperature)
 client.turn_zone_on(zone)                 # update_zone(zone, is_off=False)
 client.turn_zone_off(zone)                # update_zone(zone, is_off=True)
+client.set_zone_serranda(zone, value)     # update_zone(zone, serranda_set=value), 0=Auto 1=A1 2=A2 3=A3
+client.get_zone_detail(zone_id)           # stato_zona
+client.fetch_all_zone_details()           # stato_zona for every zone without errors
 ```
 
 ---
@@ -230,7 +225,10 @@ client.turn_zone_off(zone)                # update_zone(zone, is_off=True)
 coordinator.polaris_device  # PolarisDevice | None
 coordinator.polaris_zones   # list[PolarisZone]
 coordinator.serial          # device serial or IP-based fallback
+coordinator.zone_details    # {zone_id: stato_zona dict}
 ```
+
+Zone details: on the first successful poll `_async_update_data` calls `client.fetch_all_zone_details()` (10 s timeout, never retried, failure only logged). Every poll then merges the cached `shu`/`shu_set`/`fan`/`fan_set` into the zones, because `stato_r` does not carry them.
 
 ### Control methods (all call `async_request_refresh()` after)
 ```python
@@ -242,6 +240,7 @@ coordinator.async_set_zone_temp(zone_id, temp)
 coordinator.async_turn_zone_on(zone_id)
 coordinator.async_turn_zone_off(zone_id)
 coordinator.async_update_zone(zone_id, **kwargs)  # generic
+coordinator.async_set_zone_serranda(zone_id, value)  # updates zone_details cache, sleeps 2 s, then refresh
 ```
 
 `_find_zone(zone_id)` searches `self.polaris_zones` list.
@@ -282,6 +281,22 @@ _HVAC_TO_CU = {
 - `current_humidity`: `zone.humidity`
 - `async_set_temperature` -> `coordinator.async_set_zone_temp(zone_id, temp)`
 - `async_turn_on/off` -> `coordinator.async_turn_zone_on/off(zone_id)`
+- `name`: zone name from the device (`zone.name.strip()`)
+- `SWING_MODE` only when `zone_details[zone_id]["shu"] != -1` (damper installed). Swing modes = `SERRANDA_OPTIONS` `{0: "Auto", 1: "A1", 2: "A2", 3: "A3"}` -> `coordinator.async_set_zone_serranda()`
+
+---
+
+## Sensors and Binary Sensors
+
+| Platform | Class | `unique_id` | Value |
+|----------|-------|-------------|-------|
+| SENSOR | `PolarisOperatingModeSensor` | `polaris_<serial>_operating_mode` | `POLARIS_COOLING_MODES[operating_mode]` (`heating`/`cooling`/`dehumidification`/`ventilation`); attrs `operating_mode_id`, `is_cooling`, `is_off`, `firmware`, `serial` |
+| SENSOR | `PolarisZoneTemperatureSensor` | `polaris_<serial>_zone_<id>_temp` | `zone.current_temp` |
+| SENSOR | `PolarisZoneHumiditySensor` | `polaris_<serial>_zone_<id>_humidity` | `zone.humidity` |
+| BINARY_SENSOR | `PolarisDeviceErrorBinarySensor` | `polaris_<serial>_device_error` | `device.has_error`; attr `active_errors` |
+| BINARY_SENSOR | `PolarisZoneErrorBinarySensor` | `polaris_<serial>_zone_<id>_error` | `zone.has_error`; attr `active_errors` |
+
+All Polaris entities extend `CoordinatorEntity` directly (not `BaseEntity`) and share `device_info` identifiers `(DOMAIN, f"polaris_{serial}")`, model `"Polaris 5X"`.
 
 ---
 
@@ -303,6 +318,7 @@ _HVAC_TO_CU = {
 - `t_can` stored internally as °C; multiply by 10 when sending in `upd_cu`
 - `t_set` sent as integer string: `str(round(temp * 10))`
 - `fan_set`/`shu_set` value `7` -> send as `16` (AUTO encoding)
+- `fan_set`/`shu_set` must carry the same value; sending `fan_set=-1` hangs the CU
 
 ### APK Source References
 - `it.tecnosystemi.TS.Model.ControlUnit.update_CU_command()` — canonical `upd_cu` builder

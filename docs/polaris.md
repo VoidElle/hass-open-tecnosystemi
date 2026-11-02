@@ -5,7 +5,8 @@ Local TCP-based HVAC zone controllers by Tecnosystemi.
 ## Protocol
 - **Transport**: TCP on port **1235**
 - One `PolarisLocalClient` per device (no shared transport)
-- Connection is persistent; reconnect handled by client library
+- Each command opens a short-lived TCP connection (open, send JSON, read reply, close); no persistent socket
+- Integration client settings: timeout 15 s, 3 attempts, 2 s between attempts
 
 ## Setup
 
@@ -53,17 +54,20 @@ One per Polaris CU (Control Unit). Controls the global machine.
 
 ---
 
-### Climate — Zone (`climate.<name>_zone_<n>`)
-One per zone reported by the CU.
+### Climate — Zone (`climate.<name>_<zone_name>`)
+One per zone reported by the CU. Named after the zone name stored on the device.
 
 | Feature | Supported |
 |---------|-----------|
 | Turn on / off (zone only) | ✅ |
 | Target temperature | ✅ (10–30 °C, step 0.5) |
 | HVAC mode | `off` / `auto` only |
+| Swing mode (damper / serranda) | ✅ `Auto`, `A1`, `A2`, `A3`, only for zones with a damper installed |
 
 Zone on/off is **independent** — turning a zone off does not affect other zones or the CU.
 `auto` = zone active; machine HVAC mode is set on the main climate entity.
+
+Damper data comes from `stato_zona`, read once on the first successful poll for zones without errors. A zone that reports an error at startup, or any zone when the fetch times out, has no swing mode until the integration reloads.
 
 ---
 
@@ -72,8 +76,8 @@ Zone on/off is **independent** — turning a zone off does not affect other zone
 | Entity | Description |
 |--------|-------------|
 | `sensor.<name>_operating_mode` | CU global mode string (`heating`, `cooling`, `dehumidification`, `ventilation`) |
-| `sensor.<name>_zone_<n>_temperature` | Zone current temperature (°C) |
-| `sensor.<name>_zone_<n>_humidity` | Zone humidity (%) |
+| `sensor.<name>_<zone_name>_temperature` | Zone current temperature (°C) |
+| `sensor.<name>_<zone_name>_humidity` | Zone humidity (%) |
 
 `sensor.<name>_operating_mode` also exposes extra attributes:
 - `operating_mode_id` — raw integer
@@ -89,7 +93,7 @@ Zone on/off is **independent** — turning a zone off does not affect other zone
 | Entity | Description |
 |--------|-------------|
 | `binary_sensor.<name>_device_error` | CU has at least one active error bit. `active_errors` attribute lists them. |
-| `binary_sensor.<name>_zone_<n>_error` | Zone has at least one active error bit. |
+| `binary_sensor.<name>_<zone_name>_error` | Zone has at least one active error bit. |
 
 ---
 

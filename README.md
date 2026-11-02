@@ -5,7 +5,7 @@
   <p><em>Home Assistant integration for Tecnosystemi Pico and Polaris 5X devices</em></p>
   <br>
   <a href="https://github.com/VoidElle/open-pico-local-api"><img src="https://img.shields.io/badge/open--pico--local--api-v2.6.2-blue?style=flat-square&logo=github" alt="open-pico-local-api"></a>
-  <a href="https://github.com/VoidElle/open-polaris-local-api"><img src="https://img.shields.io/badge/open--polaris--local--api-v1.2.2-blue?style=flat-square&logo=github" alt="open-polaris-local-api"></a>
+  <a href="https://github.com/VoidElle/open-polaris-local-api"><img src="https://img.shields.io/badge/open--polaris--local--api-v1.2.3-blue?style=flat-square&logo=github" alt="open-polaris-local-api"></a>
   <a href="https://github.com/VoidElle/hass-open-tecnosystemi/releases"><img src="https://img.shields.io/github/v/release/VoidElle/hass-open-tecnosystemi?style=flat-square&label=version" alt="version"></a>
   <a href="https://github.com/VoidElle/hass-open-tecnosystemi/blob/master/LICENSE"><img src="https://img.shields.io/github/license/VoidElle/hass-open-tecnosystemi?style=flat-square" alt="license"></a>
   <br>
@@ -23,7 +23,7 @@ Open Tecnosystemi is a Home Assistant integration that enables management of Tec
 - **Pico** - Local UDP-based ventilation and air quality units
 - **Polaris 5X** - Local TCP-based HVAC zone controllers
 
-Both device families communicate **entirely over your local network**, requiring no cloud connectivity (in most of the cases).
+Both device families communicate **over your local network**. Pico also has an optional cloud fallback for units Home Assistant cannot reach on the LAN.
 
 ## Installation 📦
 ### Via HACS (Recommended) ⭐
@@ -40,9 +40,8 @@ Open Tecnosystemi is available in the **HACS Default** repository - no custom re
 7. Restart Home Assistant 🔄
 
 ### Manual Installation 🔧
-1. Copy the repository content inside a folder called `hass_open_tecnosystemi`
-2. Move the folder to your `custom_components` directory
-3. Restart Home Assistant
+1. Copy the `custom_components/open_pico/` folder from this repository into your Home Assistant `custom_components` directory (the folder must stay named `open_pico`)
+2. Restart Home Assistant
 
 ## Add the Integration to Home Assistant 🧩
 
@@ -53,7 +52,7 @@ After installing (via HACS or manually) and restarting Home Assistant:
 3. Search for **"Open Tecnosystemi"**
 4. Select it from the list
 5. Choose the device family: **Pico** or **Polaris**
-6. Choose the setup method: **Manual** or **Scan**
+6. Choose the setup method: **Manual**, **Scan** or, for Pico only, **Cloud**
 
 ## Configuration ⚙️
 
@@ -85,7 +84,9 @@ Notes: state is polled every 30 seconds and the refresh after a command waits 3 
 ### Pico
 - 🌐 **Local UDP Communication**: Direct device control without cloud dependency
 - 📊 **Real-time Monitoring**: Temperature, humidity, CO2, TVOC sensors
-- 🎛️ **Full Control**: Operating modes, fan speed, night mode, LED control
+- 🎛️ **Full Control**: Operating modes, fan speed, night mode, LED control, target humidity
+- 🧹 **Filter Maintenance**: Maintenance alert binary sensor and reset button
+- ☁️ **Cloud Fallback**: Optional, for units not reachable on the LAN
 
 ### Polaris 5X
 - 🌐 **Local TCP Communication**: Direct device control on port 1235, no cloud or internet required
@@ -93,6 +94,8 @@ Notes: state is polled every 30 seconds and the refresh after a command waits 3 
 - ❄️ **HVAC Modes**: Heating, Cooling (Raffrescamento, Deumidificazione, Ventilazione)
 - 💧 **Zone Sensors**: Temperature and humidity per zone
 - 📊 **Operating Mode**: Global CU operating mode sensor
+- 🌀 **Damper Control**: Per-zone damper (serranda) position via the zone climate swing mode
+- 🚨 **Error Sensors**: CU and per-zone error binary sensors
 
 ### General
 - 🔄 **Multi-Device Support**: Control multiple devices of both types simultaneously
@@ -100,7 +103,8 @@ Notes: state is polled every 30 seconds and the refresh after a command waits 3 
 - ⚡ **Concurrent Polling**: Efficient updates across all devices
 
 ## Limitations ⚠️
-- Both Pico and Polaris require local network access (devices must be on the same network as Home Assistant)
+- Polaris requires local network access (devices must be on the same network as Home Assistant)
+- Pico needs local network access unless set up with the cloud fallback, which depends on the Tecnosystemi backend
 
 ## Troubleshooting 🔍
 
@@ -192,7 +196,7 @@ Bumps the integration version in `manifest.json`.
 
 After bumping, commit and tag:
 ```bash
-git add manifest.json
+git add custom_components/open_pico/manifest.json
 git commit -m "chore: bump version to vX.Y.Z"
 git tag vX.Y.Z
 git push && git push --tags

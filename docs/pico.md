@@ -138,5 +138,6 @@ Multiple Pico devices share one UDP socket. The `PicoClientManager` singleton is
 
 ## Error Handling
 - If device is unreachable on poll, coordinator attempts reconnect automatically.
-- 3 retry attempts with 2 s delay between attempts.
+- Local client: 5 s timeout, 1 attempt per request, 2 s retry delay. Cloud client: 15 s timeout, 2 attempts, 2 s delay.
+- Cloud: invalid credentials raise `ConfigEntryError` (no retry); other connect errors raise `ConfigEntryNotReady`.
 - `ConfigEntryNotReady` raised if initial connect/refresh fails.

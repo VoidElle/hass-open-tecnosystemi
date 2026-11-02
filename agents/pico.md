@@ -10,39 +10,30 @@ Protocol: **local UDP**, listen port `40069`, send to device port `40070`. Optio
 
 ---
 
-## YAML Config Schema
+## Configuration (UI only)
 
-```yaml
-open_pico:
-  devices:
-    - ip: "192.168.1.x"
-      pin: "1234"
-      name: "Pico Device"   # optional
-  local_port: 40069         # optional, default 40069
-  verbose: false            # optional debug logging
-```
+No YAML. Every device is one config entry created in **Settings -> Devices & Services -> Add Integration -> Open Pico** (`config_flow.py`). Steps: `user` (Pico/Polaris) -> `pico` (manual / scan / cloud) -> `pico_manual` | `pico_scan` -> `pico_scan_results` -> `pico_scan_confirm` | `pico_cloud` -> `pico_cloud_device`.
 
-Config schema lives in `__init__.py` (`PICO_DEVICE_SCHEMA`, `CONFIG_SCHEMA`).
+Local entry data: `device_type: "pico"`, `ip`, `pin`, `name`, `local_port` (40069), `verbose`. Cloud entry data: see [Entry data](#entry-data).
 
 ---
 
 ## Architecture
 
-### Setup flow (`__init__.py -> async_setup`)
-1. Read `devices` list from YAML
-2. Create `PicoClientManager` -> `initialize()` (binds shared UDP socket on `local_port`)
-3. For each device: `manager.create_client(ip, pin, ...)` -> `client.connect()` -> create `MainCoordinator` -> `async_refresh()`
-4. Append coordinator to `hass.data[DOMAIN]["coordinators"]`
-5. Cloud branch (`entry.data["connection"] == "cloud"`): `_setup_pico_entry` builds `PicoCloudClient` directly (HTTPS, no `PicoClientManager`), `PicoAuthError` -> `ConfigEntryError`, other connect errors -> `ConfigEntryNotReady`; coordinator gets `scan_interval` / `command_delay` from `entry.data` (defaults `CLOUD_SCAN_INTERVAL`, `CLOUD_COMMAND_DELAY`). Unload calls `client.disconnect()`; the manager shutdown check counts only local entries.
-6. Load platforms via `discovery.async_load_platform` for all `PICO_PLATFORMS`
+### Setup flow (`__init__.py -> async_setup_entry -> _setup_pico_entry`)
+1. Local branch (`entry.data.get("connection", "local") == "local"`): under `hass.data[DOMAIN]["pico_manager_lock"]`, create the shared `PicoClientManager` once -> `initialize()` (binds UDP socket on `local_port`); failure -> `ConfigEntryNotReady`
+2. `manager.create_client(ip, pin, device_id=f"pico_{name_slug}", timeout=5, retry_attempts=1, retry_delay=2.0)` -> `client.connect()` (30 s) -> `MainCoordinator(hass, client, name)`
+3. Cloud branch (`entry.data["connection"] == "cloud"`): builds `PicoCloudClient` directly (HTTPS, no `PicoClientManager`), `PicoAuthError` -> `ConfigEntryError`, other connect errors -> `ConfigEntryNotReady`; coordinator gets `scan_interval` / `command_delay` from `entry.data` (defaults `CLOUD_SCAN_INTERVAL`, `CLOUD_COMMAND_DELAY`)
+4. `coordinator.async_refresh()` (30 s); failure -> `client.disconnect()` + `ConfigEntryNotReady`
+5. Store in `hass.data[DOMAIN][entry.entry_id]`, then `async_forward_entry_setups(entry, PICO_PLATFORMS)`
+6. Unload (`async_unload_entry`): unload platforms, `coordinator.async_shutdown()`; cloud -> `client.disconnect()`; local -> shut down `pico_manager` when no other local Pico entry remains
 
 ### hass.data layout
 ```python
 hass.data[DOMAIN] = {
-    "coordinators": [MainCoordinator, ...],      # Pico devices
-    "polaris_coordinators": [...],               # Polaris devices (see polaris.md)
-    "manager": PicoClientManager,                # shared UDP manager
-    "config": domain_config,
+    "<entry_id>": {"coordinator": MainCoordinator | PolarisCoordinator, "device_type": "pico" | "polaris"},
+    "pico_manager": PicoClientManager,   # shared UDP manager, local Pico entries only
+    "pico_manager_lock": asyncio.Lock,
 }
 ```
 
@@ -71,9 +62,10 @@ IDP counter wraps within allocated range. On IDP sync failure: reset counter, re
 
 ### `PicoClientManager.create_client()` defaults
 ```python
-timeout=15, retry_attempts=3, retry_delay=2.0, device_port=40070
-device_id = f"pico_{ip.replace('.', '_')}"
+timeout=5, retry_attempts=1, retry_delay=2.0, poll_jitter=2.0, device_port=40070
+device_id = f"pico_{ip.replace('.', '_')}"  # only when not passed; setup passes f"pico_{name_slug}"
 ```
+Returns the existing client if `device_id` is already registered.
 
 ---
 
@@ -181,7 +173,7 @@ Fields parsed in `PicoDeviceModel.from_dict(data)`:
 
 ## Coordinator (`MainCoordinator`)
 
-`coordinator.data` is `PicoDeviceModel | None`. All control methods call client then `async_request_refresh()`.
+`coordinator.data` is `PicoDeviceModel | None`. All control methods call the client then `_refresh_after_command()` (sleeps `command_delay`, 0 for local entries, then `async_refresh()`).
 
 ### Convenience properties
 ```python
@@ -251,27 +243,27 @@ Used only for entries with `entry.data["connection"] == "cloud"` (entries withou
 - `_attr_has_entity_name = True`
 - `available`: `coordinator.last_update_success and coordinator.data is not None`
 - `device_info`: identifiers `(DOMAIN, coordinator.family_name)`, name `coordinator.device_name` (entry name, not `data.device_info.name`), manufacturer `"Tecnosystemi"`, model `f"Model {device_info.model}"`, sw_version `device_info.firmware_version`
-- `unique_id` pattern: `f"{DOMAIN}_{entity_type}_{coordinator.pico_ip.replace('.', '_')}"`
+- `unique_id` pattern: `f"{DOMAIN}_{entity_type}_{coordinator.family_name}"` (`family_name` = slug of the entry name, e.g. `living_room_pico`)
 
 ### Platform summary
 | Platform | Entity class | `unique_id` suffix | Notes |
 |----------|-------------|-------------------|-------|
-| FAN | `PicoFan` | `fan_<ip>` | Presets = all modes; speed% only when `supports_fan_speed` and not night mode |
-| SWITCH | `PicoNightModeSwitch` | `night_mode_<ip>` | `available` gated by `supports_night_mode` |
-| SWITCH | `PicoLEDStatusSwitch` | `led_status_<ip>` | `led_on_off_breve: 1=ON, 2=OFF` |
-| SELECT | `PicoTargetHumiditySelect` | `target_humidity_<ip>` | `available` gated by `supports_target_humidity` |
-| SELECT | `PicoPresetModeSelect` | `preset_mode_<ip>` | All 12 modes |
+| FAN | `PicoFan` | `fan_<family_name>` | Presets = all modes; speed% only when `supports_fan_speed` and not night mode |
+| SWITCH | `PicoNightModeSwitch` | `night_mode_<family_name>` | `available` gated by `supports_night_mode` |
+| SWITCH | `PicoLEDStatusSwitch` | `led_status_<family_name>` | `led_on_off_breve: 1=ON, 2=OFF` |
+| SELECT | `PicoTargetHumiditySelect` | `target_humidity_<family_name>` | `available` gated by `supports_target_humidity` |
+| SELECT | `PicoPresetModeSelect` | `preset_mode_<family_name>` | All 12 modes |
 | SENSOR | `PicoTemperatureSensor` etc. | see sensor.py | Temperature, humidity, AirQ, TVOC, eCO2 |
-| BUTTON | `PicoMaintenanceResetButton` | `reset_maintenance_<ip>` | `available` only when `needs_clean_filters_maintenance` |
-| BINARY_SENSOR | `PicoMaintenanceBinarySensor` | `filter_maintenance_<ip>` | `PROBLEM` class; reads `man[0]` |
+| BUTTON | `PicoMaintenanceResetButton` | `reset_maintenance_<family_name>` | `available` only when `needs_clean_filters_maintenance` |
+| BINARY_SENSOR | `PicoMaintenanceBinarySensor` | `filter_maintenance_<family_name>` | `PROBLEM` class; reads `man[0]` |
 
 ---
 
 ## Adding a New Platform
 
-1. Create `<platform>.py` at repo root
-2. `async_setup_platform`: read `hass.data[DOMAIN]["coordinators"]`
-3. Entity class extends `BaseEntity`; `unique_id` = `f"{DOMAIN}_{type}_{coordinator.pico_ip.replace('.', '_')}"`
+1. Create `custom_components/open_pico/<platform>.py`
+2. `async_setup_entry(hass, entry, async_add_entities)`: skip unless `entry.data.get("device_type", "pico") == "pico"`, then read `hass.data[DOMAIN][entry.entry_id]["coordinator"]`
+3. Entity class extends `BaseEntity`; `unique_id` = `f"{DOMAIN}_{type}_{coordinator.family_name}"`
 4. Add to `PICO_PLATFORMS` list in `__init__.py`
 5. Add translation keys to `translations/en.json` and `translations/it.json`
 
@@ -279,10 +271,5 @@ Used only for entries with `entry.data["connection"] == "cloud"` (entries withou
 
 ## Development & Testing
 
-No automated test suite. Manual steps:
-1. Install at `custom_components/hassio_open_pico/` (folder name matters)
-2. Add YAML config under `open_pico:`
-3. Restart HA; check logs with `verbose: true`
-4. Validate YAML: **Developer Tools -> YAML -> Check Configuration**
-
-Loaded via `async_setup` (YAML), not `async_setup_entry`. UI "Add Integration" registers the domain but does nothing else.
+- Automated tests: `tests/` (pytest, `pytest.ini`, deps in `requirements_test.txt`). Add/extend the matching `tests/test_<platform>.py`
+- Manual: install at `custom_components/open_pico/` (folder name = domain), restart HA, add the device via the UI, check logs (entries are created with `verbose: True`)

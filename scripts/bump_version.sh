@@ -75,7 +75,7 @@ sed -i '' "s/\"version\": \"${CURRENT}\"/\"version\": \"${NEW}\"/" "$MANIFEST"
 echo "  manifest.json   $CURRENT → $NEW"
 
 echo "Done. Remember to:"
-echo "  git add manifest.json README.md"
+echo "  git add custom_components/open_pico/manifest.json"
 echo "  git commit -m \"chore: bump version to v${NEW}\""
 echo "  git tag v${NEW}"
 echo "  git push && git push --tags"
