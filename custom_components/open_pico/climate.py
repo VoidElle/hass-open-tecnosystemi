@@ -81,7 +81,7 @@ async def async_setup_entry(
     )
 
 
-# --- Machine-level entity ----------------------------------------------------
+# ─── Machine-level entity ────────────────────────────────────────────────────
 
 class PolarisMainClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
     """Climate entity for the Polaris CU (global machine).
@@ -168,12 +168,7 @@ class PolarisMainClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
             await self._coordinator.async_turn_off()
         else:
             is_cooling, cool_mod = _HVAC_TO_CU[hvac_mode]
-            await self._coordinator.client.update_cu(
-                is_off=False,
-                is_cooling=is_cooling,
-                operating_mode=cool_mod,
-            )
-            await self._coordinator.async_request_refresh()
+            await self._coordinator.async_set_hvac(is_cooling, cool_mod)
 
     async def async_turn_on(self) -> None:
         _LOGGER.debug("[%s] turn_on", self._coordinator.device_name)
@@ -188,7 +183,7 @@ class PolarisMainClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
         self.async_write_ha_state()
 
 
-# --- Zone-level entity -------------------------------------------------------
+# ─── Zone-level entity ───────────────────────────────────────────────────────
 
 class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
     """Climate entity for a single Polaris zone.
