@@ -1,5 +1,6 @@
 """DataUpdateCoordinator for Open Pico integration."""
 
+import asyncio
 from datetime import timedelta
 import logging
 import re
@@ -23,6 +24,8 @@ class MainCoordinator(DataUpdateCoordinator):
             hass: HomeAssistant,
             client: PicoClient,
             device_name: str,
+            scan_interval: int = DEFAULT_SCAN_INTERVAL,
+            command_delay: float = 0,
     ) -> None:
         """Initialize coordinator."""
         self.client = client
@@ -37,12 +40,15 @@ class MainCoordinator(DataUpdateCoordinator):
         # Bumped on every command so a poll sent before it can be detected as stale
         self._cmd_seq = 0
 
+        # Cloud commands are applied asynchronously: wait before refreshing
+        self._command_delay = command_delay
+
         super().__init__(
             hass,
             _LOGGER,
             name=f"{DOMAIN} ({self.device_name})",
             update_method=self.async_update_data,
-            update_interval=timedelta(seconds=DEFAULT_SCAN_INTERVAL),
+            update_interval=timedelta(seconds=scan_interval),
         )
 
     async def async_update_data(self) -> PicoDeviceModel:
@@ -178,27 +184,33 @@ class MainCoordinator(DataUpdateCoordinator):
         """Check if device supports target humidity selection."""
         return self.data.support_target_humidity_selection if self.data else False
 
+    async def _refresh_after_command(self) -> None:
+        """Refresh after a command, waiting first if the backend applies it asynchronously."""
+        if self._command_delay:
+            await asyncio.sleep(self._command_delay)
+        await self.async_refresh()
+
     # Control methods - these trigger immediate actions followed by refresh
     async def async_turn_on(self) -> None:
         """Turn the device on."""
         _LOGGER.debug("[%s] Turning ON", self.device_name)
         self._cmd_seq += 1
         await self.client.turn_on(retry=True)
-        await self.async_refresh()
+        await self._refresh_after_command()
 
     async def async_turn_off(self) -> None:
         """Turn the device off."""
         _LOGGER.debug("[%s] Turning OFF", self.device_name)
         self._cmd_seq += 1
         await self.client.turn_off(retry=True)
-        await self.async_refresh()
+        await self._refresh_after_command()
 
     async def async_set_mode(self, mode: DeviceModeEnum | int) -> None:
         """Set operating mode."""
         _LOGGER.debug("[%s] Setting mode to %s", self.device_name, mode)
         self._cmd_seq += 1
         await self.client.change_operating_mode(mode, retry=True)
-        await self.async_refresh()
+        await self._refresh_after_command()
 
     async def async_set_fan_speed(self, percentage: int) -> None:
         """Set fan speed percentage."""
@@ -209,7 +221,7 @@ class MainCoordinator(DataUpdateCoordinator):
 
         self._cmd_seq += 1
         await self.client.change_fan_speed(percentage, retry=True, force=True)
-        await self.async_refresh()
+        await self._refresh_after_command()
 
     async def async_set_night_mode(self, enable: bool) -> None:
         """Set night mode."""
@@ -220,14 +232,14 @@ class MainCoordinator(DataUpdateCoordinator):
 
         self._cmd_seq += 1
         await self.client.set_night_mode(enable, retry=True, force=True)
-        await self.async_refresh()
+        await self._refresh_after_command()
 
     async def async_set_led_status(self, enable: bool) -> None:
         """Set LED status."""
         _LOGGER.debug("[%s] Setting LED to %s", self.device_name, "ON" if enable else "OFF")
         self._cmd_seq += 1
         await self.client.set_led_status(enable, retry=True)
-        await self.async_refresh()
+        await self._refresh_after_command()
 
     async def async_set_target_humidity(self, target: int) -> None:
         """Set target humidity."""
@@ -238,4 +250,4 @@ class MainCoordinator(DataUpdateCoordinator):
 
         self._cmd_seq += 1
         await self.client.set_target_humidity(target, retry=True, force=True)
-        await self.async_refresh()
+        await self._refresh_after_command()

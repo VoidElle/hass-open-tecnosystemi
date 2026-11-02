@@ -70,6 +70,95 @@ class TestAsyncSetupEntry:
         assert mock_hass.data[DOMAIN][entry.entry_id]["device_type"] == "polaris"
 
 
+def make_cloud_entry(entry_id: str = "cloud1") -> MagicMock:
+    entry = make_entry("pico", entry_id=entry_id, name="Cloud Pico")
+    entry.data = {
+        "device_type": "pico",
+        "connection": "cloud",
+        "email": "a@b.c",
+        "password": "pw",
+        "serial": "ABC123",
+        "pin": "1234",
+        "name": "Cloud Pico",
+        "android_id": "0123456789abcdef",
+        "verbose": True,
+    }
+    return entry
+
+
+class TestSetupPicoEntry:
+    async def test_cloud_builds_cloud_client_without_manager(self, mock_hass, mock_pico_client):
+        from custom_components.open_pico import _setup_pico_entry
+
+        mock_hass.data = {DOMAIN: {}}
+        coordinator = MagicMock(last_update_success=True, async_refresh=AsyncMock())
+        with (
+            patch("custom_components.open_pico.PicoCloudClient", return_value=mock_pico_client) as cloud_cls,
+            patch("custom_components.open_pico.PicoClientManager") as manager_cls,
+            patch("custom_components.open_pico.MainCoordinator", return_value=coordinator) as coord_cls,
+        ):
+            result = await _setup_pico_entry(mock_hass, make_cloud_entry())
+
+        assert result is coordinator
+        assert cloud_cls.call_args.kwargs["device_id"] == "0123456789abcdef"
+        assert cloud_cls.call_args.kwargs["serial"] == "ABC123"
+        manager_cls.assert_not_called()
+        assert coord_cls.call_args.kwargs == {"scan_interval": 30, "command_delay": 3}
+
+    async def test_cloud_uses_entry_intervals(self, mock_hass, mock_pico_client):
+        from custom_components.open_pico import _setup_pico_entry
+
+        mock_hass.data = {DOMAIN: {}}
+        entry = make_cloud_entry()
+        entry.data = {**entry.data, "scan_interval": 60, "command_delay": 6}
+        coordinator = MagicMock(last_update_success=True, async_refresh=AsyncMock())
+        with (
+            patch("custom_components.open_pico.PicoCloudClient", return_value=mock_pico_client),
+            patch("custom_components.open_pico.MainCoordinator", return_value=coordinator) as coord_cls,
+        ):
+            await _setup_pico_entry(mock_hass, entry)
+
+        assert coord_cls.call_args.kwargs == {"scan_interval": 60, "command_delay": 6}
+
+    async def test_cloud_auth_error_raises_config_entry_error(self, mock_hass, mock_pico_client):
+        from homeassistant.exceptions import ConfigEntryError
+        from open_pico_local_api.cloud import PicoAuthError
+        from custom_components.open_pico import _setup_pico_entry
+
+        mock_hass.data = {DOMAIN: {}}
+        mock_pico_client.connect.side_effect = PicoAuthError("bad")
+        with patch("custom_components.open_pico.PicoCloudClient", return_value=mock_pico_client):
+            with pytest.raises(ConfigEntryError):
+                await _setup_pico_entry(mock_hass, make_cloud_entry())
+
+    async def test_cloud_connect_failure_raises_not_ready(self, mock_hass, mock_pico_client):
+        from homeassistant.exceptions import ConfigEntryNotReady
+        from custom_components.open_pico import _setup_pico_entry
+
+        mock_hass.data = {DOMAIN: {}}
+        mock_pico_client.connect.side_effect = OSError("down")
+        with patch("custom_components.open_pico.PicoCloudClient", return_value=mock_pico_client):
+            with pytest.raises(ConfigEntryNotReady):
+                await _setup_pico_entry(mock_hass, make_cloud_entry())
+
+    async def test_entry_without_connection_key_uses_local_path(self, mock_hass, mock_pico_client):
+        from custom_components.open_pico import _setup_pico_entry
+
+        mock_hass.data = {DOMAIN: {}}
+        manager = MagicMock(initialize=AsyncMock())
+        manager.create_client.return_value = mock_pico_client
+        coordinator = MagicMock(last_update_success=True, async_refresh=AsyncMock())
+        with (
+            patch("custom_components.open_pico.PicoClientManager", return_value=manager),
+            patch("custom_components.open_pico.PicoCloudClient") as cloud_cls,
+            patch("custom_components.open_pico.MainCoordinator", return_value=coordinator),
+        ):
+            await _setup_pico_entry(mock_hass, make_entry("pico"))
+
+        cloud_cls.assert_not_called()
+        manager.create_client.assert_called_once()
+
+
 class TestAsyncUnloadEntry:
     async def test_unload_pico_entry(self, mock_hass):
         from custom_components.open_pico import async_unload_entry
@@ -143,3 +232,46 @@ class TestAsyncUnloadEntry:
 
         result = await async_unload_entry(mock_hass, entry)
         assert result is False
+
+    async def test_unload_cloud_entry_disconnects_client(self, mock_hass, mock_pico_client):
+        from custom_components.open_pico import async_unload_entry
+
+        entry = make_cloud_entry("c1")
+        coord = MagicMock(async_shutdown=AsyncMock(), client=mock_pico_client)
+        mock_hass.data = {DOMAIN: {"c1": {"coordinator": coord, "device_type": "pico"}}}
+
+        assert await async_unload_entry(mock_hass, entry) is True
+        mock_pico_client.disconnect.assert_awaited_once()
+
+    async def test_unload_keeps_manager_while_local_entry_remains(self, mock_hass):
+        from custom_components.open_pico import async_unload_entry
+
+        entry = make_entry("pico", entry_id="e5")
+        mock_manager = MagicMock(shutdown=AsyncMock())
+        mock_hass.data = {
+            DOMAIN: {
+                "e5": {"coordinator": MagicMock(async_shutdown=AsyncMock()), "device_type": "pico"},
+                "pico_manager": mock_manager,
+            }
+        }
+        other_local = make_entry("pico", entry_id="e6")
+        mock_hass.config_entries.async_entries = MagicMock(return_value=[other_local])
+
+        await async_unload_entry(mock_hass, entry)
+        mock_manager.shutdown.assert_not_called()
+
+    async def test_unload_shuts_down_manager_when_only_cloud_remains(self, mock_hass):
+        from custom_components.open_pico import async_unload_entry
+
+        entry = make_entry("pico", entry_id="e7")
+        mock_manager = MagicMock(shutdown=AsyncMock())
+        mock_hass.data = {
+            DOMAIN: {
+                "e7": {"coordinator": MagicMock(async_shutdown=AsyncMock()), "device_type": "pico"},
+                "pico_manager": mock_manager,
+            }
+        }
+        mock_hass.config_entries.async_entries = MagicMock(return_value=[make_cloud_entry("c2")])
+
+        await async_unload_entry(mock_hass, entry)
+        mock_manager.shutdown.assert_called_once()

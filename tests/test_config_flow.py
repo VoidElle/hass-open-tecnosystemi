@@ -1,6 +1,7 @@
 """Tests for config flow (OpenPicoConfigFlow)."""
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -63,6 +64,13 @@ class TestStepPico:
         flow.async_step_pico_scan = AsyncMock(return_value={"type": "form"})
         await flow.async_step_pico({"method": "scan"})
         flow.async_step_pico_scan.assert_called_once()
+
+
+    async def test_routes_to_cloud(self):
+        flow = _make_flow()
+        flow.async_step_pico_cloud = AsyncMock(return_value={"type": "form"})
+        await flow.async_step_pico({"method": "cloud"})
+        flow.async_step_pico_cloud.assert_called_once()
 
 
 # ─── Step: pico_manual ───────────────────────────────────────────────────────
@@ -173,6 +181,19 @@ class TestStepPicoScan:
 
         flow.async_step_pico_scan_results.assert_called_once()
         assert flow._scan_pin == "1234"
+
+    async def test_cloud_entry_without_ip_does_not_break_scan(self):
+        flow = _make_flow()
+        cloud_entry = MagicMock()
+        cloud_entry.data = {"device_type": "pico", "connection": "cloud", "serial": "SER1"}
+        flow._async_current_entries = MagicMock(return_value=[cloud_entry])
+        flow.async_step_pico_scan_results = AsyncMock(return_value={"type": "form"})
+
+        with patch("open_pico_local_api.PicoAutoDiscovery") as MockDiscovery:
+            MockDiscovery.discover = AsyncMock(return_value=["192.168.1.50"])
+            await flow.async_step_pico_scan({"pin": "1234", "subnet": "192.168.1.0/24"})
+
+        flow.async_step_pico_scan_results.assert_called_once()
 
     async def test_already_configured_ips_excluded(self):
         flow = _make_flow()
@@ -341,3 +362,123 @@ class TestStepPolarisScanConfirm:
         flow._selected_ip = "192.168.1.60"
         await flow.async_step_polaris_scan_confirm(None)
         flow.async_show_form.assert_called_once()
+
+
+# ─── Step: pico_cloud ────────────────────────────────────────────────────────
+
+def _cloud_client(devices=None, connect_exc=None, status_exc=None):
+    client = MagicMock()
+    client.connect = AsyncMock(side_effect=connect_exc)
+    client.get_devices = AsyncMock(return_value=devices or [])
+    client.get_status = AsyncMock(side_effect=status_exc)
+    client.disconnect = AsyncMock()
+    return client
+
+
+def _dev(serial, lvdv_type=1):
+    return {"Serial": serial, "Name": "Casa", "LVDV_Type": lvdv_type, "PlantName": "Home"}
+
+
+class TestStepPicoCloud:
+    async def test_shows_form_when_no_input(self):
+        flow = _make_flow()
+        await flow.async_step_pico_cloud(None)
+        assert flow.async_show_form.call_args[1]["step_id"] == "pico_cloud"
+
+    async def test_invalid_auth(self):
+        from open_pico_local_api.cloud import PicoAuthError
+
+        flow = _make_flow()
+        client = _cloud_client(connect_exc=PicoAuthError("bad"))
+        with patch("open_pico_local_api.cloud.PicoCloudClient", return_value=client):
+            await flow.async_step_pico_cloud({"email": "a@b.c", "password": "x"})
+        assert flow.async_show_form.call_args[1]["errors"]["base"] == "invalid_auth"
+        client.disconnect.assert_awaited_once()
+
+    async def test_timeout(self):
+        flow = _make_flow()
+        client = _cloud_client(connect_exc=asyncio.TimeoutError())
+        with patch("open_pico_local_api.cloud.PicoCloudClient", return_value=client):
+            await flow.async_step_pico_cloud({"email": "a@b.c", "password": "x"})
+        assert flow.async_show_form.call_args[1]["errors"]["base"] == "timeout"
+
+    async def test_no_devices_when_filtered_out(self):
+        flow = _make_flow()
+        flow._async_current_entries = MagicMock(
+            return_value=[MagicMock(data={"serial": "AAA1"})]
+        )
+        client = _cloud_client(devices=[_dev("aaa1"), _dev("BBB2", lvdv_type=2)])
+        with patch("open_pico_local_api.cloud.PicoCloudClient", return_value=client):
+            await flow.async_step_pico_cloud({"email": "a@b.c", "password": "x"})
+        assert flow.async_show_form.call_args[1]["errors"]["base"] == "no_cloud_devices"
+
+    async def test_success_filters_and_goes_to_device_step(self):
+        flow = _make_flow()
+        flow._async_current_entries = MagicMock(
+            return_value=[MagicMock(data={"serial": "AAA1"})]
+        )
+        flow.async_step_pico_cloud_device = AsyncMock(return_value={"type": "form"})
+        client = _cloud_client(
+            devices=[_dev("AAA1"), _dev("BBB2"), _dev("CCC3", lvdv_type=2)]
+        )
+        with patch("open_pico_local_api.cloud.PicoCloudClient", return_value=client):
+            await flow.async_step_pico_cloud({"email": "a@b.c", "password": "x"})
+        flow.async_step_pico_cloud_device.assert_called_once()
+        assert [d["Serial"] for d in flow._cloud_devices] == ["BBB2"]
+        assert flow._cloud_email == "a@b.c"
+        client.disconnect.assert_awaited_once()
+
+
+# ─── Step: pico_cloud_device ─────────────────────────────────────────────────
+
+class _DeviceError(Exception):
+    pass
+
+
+@pytest.fixture(autouse=True)
+def _stub_device_error():
+    # conftest's library stub has no PicoDeviceError; real library does
+    with patch("open_pico_local_api.PicoDeviceError", _DeviceError, create=True):
+        yield
+
+
+class TestStepPicoCloudDevice:
+    INPUT = {"serial": "bbb2", "pin": "1234", "name": "Casa"}
+
+    async def test_success_creates_cloud_entry(self):
+        flow = _make_flow()
+        flow._cloud_email, flow._cloud_password = "a@b.c", "x"
+        client = _cloud_client()
+        with patch("open_pico_local_api.cloud.PicoCloudClient", return_value=client):
+            await flow.async_step_pico_cloud_device(self.INPUT)
+        data = flow.async_create_entry.call_args[1]["data"]
+        assert data["connection"] == "cloud"
+        assert data["serial"] == "BBB2"
+        assert len(data["android_id"]) == 16
+        assert (data["scan_interval"], data["command_delay"]) == (30, 3)
+        client.disconnect.assert_awaited_once()
+
+    async def test_custom_intervals_stored(self):
+        flow = _make_flow()
+        flow._cloud_email, flow._cloud_password = "a@b.c", "x"
+        with patch("open_pico_local_api.cloud.PicoCloudClient", return_value=_cloud_client()):
+            await flow.async_step_pico_cloud_device({**self.INPUT, "scan_interval": 60.0, "command_delay": 6.0})
+        data = flow.async_create_entry.call_args[1]["data"]
+        assert (data["scan_interval"], data["command_delay"]) == (60, 6)
+
+    async def test_invalid_pin(self):
+        flow = _make_flow()
+        client = _cloud_client(status_exc=_DeviceError("Wrong PIN"))
+        with patch("open_pico_local_api.cloud.PicoCloudClient", return_value=client):
+            await flow.async_step_pico_cloud_device(self.INPUT)
+        assert flow.async_show_form.call_args[1]["errors"]["base"] == "invalid_pin"
+        client.disconnect.assert_awaited_once()
+
+    async def test_cannot_connect(self):
+        flow = _make_flow()
+        client = _cloud_client(connect_exc=OSError("down"))
+        with patch("open_pico_local_api.cloud.PicoCloudClient", return_value=client):
+            await flow.async_step_pico_cloud_device(self.INPUT)
+        assert flow.async_show_form.call_args[1]["errors"]["base"] == "cannot_connect"
+        flow.async_create_entry.assert_not_called()
+        client.disconnect.assert_awaited_once()

@@ -15,11 +15,12 @@ import re
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady
 
+from open_pico_local_api.cloud import PicoAuthError, PicoCloudClient
 from open_polaris_local_api import PolarisLocalClient
 
-from .const import DOMAIN
+from .const import CLOUD_COMMAND_DELAY, CLOUD_SCAN_INTERVAL, DOMAIN
 from .coordinator import MainCoordinator
 from .pico_manager import PicoClientManager
 from .polaris_coordinator import PolarisCoordinator
@@ -70,41 +71,63 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def _setup_pico_entry(hass: HomeAssistant, entry: ConfigEntry) -> MainCoordinator:
     """Set up one Pico device from a config entry."""
-    ip: str = entry.data["ip"]
-    pin: str = entry.data["pin"]
     name: str = entry.data["name"]
-    local_port: int = entry.data.get("local_port", 40069)
+    pin: str = entry.data["pin"]
     verbose: bool = entry.data.get("verbose", False)
     name_slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
-    # PicoClientManager is a singleton shared across all Pico config entries.
-    # Guard with a lock: async_setup_entry runs concurrently for every config entry,
-    # so without a lock all entries would see "pico_manager" missing and each create
-    # their own PicoClientManager before any of them stores the result.
-    hass.data[DOMAIN].setdefault("pico_manager_lock", asyncio.Lock())
-    async with hass.data[DOMAIN]["pico_manager_lock"]:
-        if "pico_manager" not in hass.data[DOMAIN]:
-            manager = PicoClientManager(local_port=local_port, verbose=verbose)
-            try:
-                await manager.initialize()
-            except Exception as err:
-                raise ConfigEntryNotReady(f"Failed to initialize shared UDP transport: {err}") from err
-            hass.data[DOMAIN]["pico_manager"] = manager
-        else:
-            manager: PicoClientManager = hass.data[DOMAIN]["pico_manager"]
+    if entry.data.get("connection", "local") == "cloud":
+        # Cloud clients use HTTPS: no UDP transport, so PicoClientManager is not involved.
+        ip = serial = entry.data["serial"]
+        client = PicoCloudClient(
+            email=entry.data["email"], password=entry.data["password"],
+            serial=serial, pin=pin, name=name, device_id=entry.data["android_id"],
+            timeout=15, retry_attempts=2, retry_delay=2.0, verbose=verbose,
+        )
+        try:
+            await asyncio.wait_for(client.connect(), timeout=30)
+        except PicoAuthError as err:
+            raise ConfigEntryError(f"Invalid cloud credentials for Pico {serial}: {err}") from err
+        except Exception as err:
+            raise ConfigEntryNotReady(f"Cannot connect to Pico {serial}: {err}") from err
 
-    device_id = f"pico_{name_slug}"
-    client = manager.create_client(
-        ip=ip, pin=pin, device_id=device_id,
-        timeout=5, retry_attempts=1, retry_delay=2.0,
-    )
+        coordinator = MainCoordinator(
+            hass, client, name,
+            scan_interval=entry.data.get("scan_interval", CLOUD_SCAN_INTERVAL),
+            command_delay=entry.data.get("command_delay", CLOUD_COMMAND_DELAY),
+        )
+    else:
+        ip: str = entry.data["ip"]
+        local_port: int = entry.data.get("local_port", 40069)
 
-    try:
-        await asyncio.wait_for(client.connect(), timeout=30)
-    except Exception as err:
-        raise ConfigEntryNotReady(f"Cannot connect to Pico {ip}: {err}") from err
+        # PicoClientManager is a singleton shared across all Pico config entries.
+        # Guard with a lock: async_setup_entry runs concurrently for every config entry,
+        # so without a lock all entries would see "pico_manager" missing and each create
+        # their own PicoClientManager before any of them stores the result.
+        hass.data[DOMAIN].setdefault("pico_manager_lock", asyncio.Lock())
+        async with hass.data[DOMAIN]["pico_manager_lock"]:
+            if "pico_manager" not in hass.data[DOMAIN]:
+                manager = PicoClientManager(local_port=local_port, verbose=verbose)
+                try:
+                    await manager.initialize()
+                except Exception as err:
+                    raise ConfigEntryNotReady(f"Failed to initialize shared UDP transport: {err}") from err
+                hass.data[DOMAIN]["pico_manager"] = manager
+            else:
+                manager: PicoClientManager = hass.data[DOMAIN]["pico_manager"]
 
-    coordinator = MainCoordinator(hass, client, name)
+        device_id = f"pico_{name_slug}"
+        client = manager.create_client(
+            ip=ip, pin=pin, device_id=device_id,
+            timeout=5, retry_attempts=1, retry_delay=2.0,
+        )
+
+        try:
+            await asyncio.wait_for(client.connect(), timeout=30)
+        except Exception as err:
+            raise ConfigEntryNotReady(f"Cannot connect to Pico {ip}: {err}") from err
+
+        coordinator = MainCoordinator(hass, client, name)
 
     try:
         async with asyncio.timeout(30):
@@ -176,9 +199,15 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             except Exception as err:
                 _LOGGER.error("Error shutting down coordinator for %s: %s", entry.title, err)
 
-        if device_type == "pico":
+        if device_type == "pico" and entry.data.get("connection", "local") == "cloud":
+            try:
+                await coordinator.client.disconnect()
+            except Exception as err:
+                _LOGGER.error("Error disconnecting cloud client for %s: %s", entry.title, err)
+        elif device_type == "pico":
             remaining_pico = any(
                 e.data.get("device_type") == "pico"
+                and e.data.get("connection", "local") == "local"
                 for e in hass.config_entries.async_entries(DOMAIN)
                 if e.entry_id != entry.entry_id
             )
