@@ -79,6 +79,8 @@ Use **Cloud** only when the Pico is not reachable on your local network.
 
 Notes: state is polled every 30 seconds and the refresh after a command waits 3 seconds, because the vendor backend applies commands with a short delay. Both values can be changed in the device step (raise the command delay if the state flips back after a command). The account credentials are stored in the config entry. Polaris is not supported in cloud mode.
 
+The Tecnosystemi backend allows only one session per account at a time. While the integration is running, the official app shows an alert and stops working. To change something from the app, disable the integration first and enable it again afterwards.
+
 ## Features ✨
 
 ### Pico
@@ -87,6 +89,13 @@ Notes: state is polled every 30 seconds and the refresh after a command waits 3 
 - 🎛️ **Full Control**: Operating modes, fan speed, night mode, LED control, target humidity
 - 🧹 **Filter Maintenance**: Maintenance alert binary sensor and reset button
 - ☁️ **Cloud Fallback**: Optional, for units not reachable on the LAN
+
+#### Mode-dependent controls
+Like the official app, some Pico controls only work in certain operating modes:
+- **Fan speed** and **Night mode**: Heat Recovery, Extraction, Immission, Comfort Summer, Comfort Winter. In the other modes, and while night mode is on, the fan entity shows only on/off.
+- **Target humidity**: Humidity Recovery, Humidity Extraction, Humidity/CO2 Recovery, Humidity/CO2 Extraction. In the other modes the entity is unavailable.
+
+CO2, eCO2 and TVOC read 0 on models without the air quality sensor. They also read 0 on models with the sensor until a mode that turns it on is active. The backend reports both cases the same way, so these entities are always created. Disable them in Home Assistant if you don't need them.
 
 ### Polaris 5X
 - 🌐 **Local TCP Communication**: Direct device control on port 1235, no cloud or internet required
