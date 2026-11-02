@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Coroutine
 from dataclasses import dataclass
 from datetime import timedelta
 import logging
+from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
@@ -55,6 +57,7 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
         self.device_name = device_name
         self.polaris_ip = client.ip
         self._zone_details: dict[int, dict] = {}
+        self._zone_refresh_index: int = 0
         # Serialize all TCP communications to the CU.
         # The Polaris CU has a very limited TCP stack and cannot handle
         # concurrent connections -- multiple simultaneous requests cause
@@ -76,7 +79,7 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
             return self.client.device.serial
         return self.client.ip.replace(".", "_")
 
-    # ─── Zone detail fetching (incremental) ──────────────────────────
+    # ─── Zone detail fetching (incremental + refresh) ───────────────
 
     def _zones_needing_details(self, zones: list[PolarisZone]) -> list[PolarisZone]:
         """Return zones that still need stato_zona data.
@@ -102,16 +105,26 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
         """Fetch stato_zona for a few zones per call, storing each result
         immediately so partial progress is never lost.
 
-        Called inside _tcp_lock during each poll cycle until all zones
-        have details.  Fetches at most _ZONE_DETAILS_PER_POLL zones
-        per cycle to stay well under the 30s setup timeout and avoid
-        overwhelming the CU.
+        Two modes:
+        - Initial: fetch missing zones, up to _ZONE_DETAILS_PER_POLL per cycle.
+        - Refresh: after all zones are cached, rotate through one zone per
+          poll in round-robin to keep serranda/fancoil values fresh (~3 min
+          per zone with 6 zones at 30s poll interval).
         """
         pending = self._zones_needing_details(zones)
-        if not pending:
-            return
 
-        batch = pending[:_ZONE_DETAILS_PER_POLL]
+        if pending:
+            # Initial fetch: get missing zones
+            batch = pending[:_ZONE_DETAILS_PER_POLL]
+        else:
+            # Refresh: round-robin through cached zones
+            valid_zones = [z for z in zones if not z.num_error]
+            if not valid_zones:
+                return
+            idx = self._zone_refresh_index % len(valid_zones)
+            batch = [valid_zones[idx]]
+            self._zone_refresh_index = idx + 1
+
         for zone in batch:
             try:
                 detail = await self.client.get_zone_detail(zone.zone_id)
@@ -129,17 +142,18 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
                 )
                 # Don't cache anything — will retry on next poll
 
-        remaining = len(pending) - len(batch)
-        if remaining > 0:
-            _LOGGER.debug(
-                "[%s] Zone details: %d cached, %d remaining",
-                self.device_name, len(self._zone_details), remaining,
-            )
-        else:
-            _LOGGER.info(
-                "[%s] All zone details fetched (%d zones)",
-                self.device_name, len(self._zone_details),
-            )
+        if pending:
+            remaining = len(pending) - len(batch)
+            if remaining > 0:
+                _LOGGER.debug(
+                    "[%s] Zone details: %d cached, %d remaining",
+                    self.device_name, len(self._zone_details), remaining,
+                )
+            else:
+                _LOGGER.info(
+                    "[%s] All zone details fetched (%d zones)",
+                    self.device_name, len(self._zone_details),
+                )
 
     # ─── Main update ─────────────────────────────────────────────────
 
@@ -153,25 +167,20 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
                 # stato_zona returns per-zone data not included in stato_r.
                 # We fetch a few zones per poll cycle and accumulate results,
                 # so a single slow/errored zone never blocks the others.
-                if zones and not self.all_zone_details_fetched:
+                # After the initial fetch, we refresh one zone per poll
+                # in round-robin to keep values fresh.
+                if zones:
                     await self._async_fetch_zone_details_incremental(zones)
 
-            # Merge cached serranda/fancoil data into zones (no TCP needed).
-            # MiniDiscovery2X modules report serranda in EV/EV_set fields
-            # (not shu/shu_set which stay -1). Use EV as fallback.
-            for z in zones:
-                detail = self._zone_details.get(z.zone_id)
-                if detail:
-                    shu = detail.get("shu", -1)
-                    shu_set = detail.get("shu_set", -1)
-                    # Fallback: MiniDiscovery2X uses EV/EV_set for serranda
-                    if shu == -1 and detail.get("EV_set", -1) != -1:
-                        shu = detail.get("EV", -1)
-                        shu_set = detail.get("EV_set", -1)
-                    z.serranda = shu
-                    z.serranda_set = shu_set
-                    z.fancoil = detail.get("fan", -1)
-                    z.fancoil_set = detail.get("fan_set", -1)
+            # NOTE: We intentionally do NOT merge zone_details into the
+            # PolarisZone objects (z.serranda, z.fancoil, etc.).
+            # Reason: the library's update_zone() checks zone.serranda != -1
+            # to decide whether to include shu_set/fan_set in every command.
+            # If we set z.serranda from EV data, regular temp/on/off commands
+            # would unnecessarily send shu_set, which is incorrect for
+            # MiniDiscovery2X modules (see issue #23, item 5).
+            # Climate entities read serranda values from coordinator.zone_details
+            # instead.
 
             _LOGGER.debug(
                 "[%s] Polaris update: on=%s, mode=%s, zones=%d",
@@ -194,16 +203,19 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
                     device.serial, device.fw_ver,
                 )
                 for z in zones:
+                    detail = self._zone_details.get(z.zone_id, {})
                     _LOGGER.debug(
                         "[Polaris][%s] Zone '%s' (id=%d): is_off=%s, "
                         "temp=%s, set_temp=%s, humidity=%s, set_humidity=%s, "
-                        "fancoil=%s, fancoil_set=%s, serranda=%s, serranda_set=%s, "
+                        "shu=%s, shu_set=%s, EV=%s, EV_set=%s, "
+                        "fan=%s, fan_set=%s, "
                         "ev=%s, is_crono=%s, num_error=%s",
                         self.device_name, z.name, z.zone_id,
                         z.is_off, z.current_temp, z.set_temp,
                         z.humidity, z.set_humidity,
-                        z.fancoil, z.fancoil_set,
-                        z.serranda, z.serranda_set,
+                        detail.get("shu", "?"), detail.get("shu_set", "?"),
+                        detail.get("EV", "?"), detail.get("EV_set", "?"),
+                        detail.get("fan", "?"), detail.get("fan_set", "?"),
                         z.ev, z.is_crono_mode, z.num_error,
                     )
 
@@ -230,44 +242,56 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
     def polaris_zones(self) -> list[PolarisZone]:
         return self.data.zones if self.data else []
 
+    @property
+    def zone_details(self) -> dict[int, dict]:
+        """Return cached zone details (from stato_zona)."""
+        return self._zone_details
+
+    # ─── Command helper ──────────────────────────────────────────────
+
+    async def _command(
+        self,
+        coro: Coroutine[Any, Any, Any],
+        delay: float = _CMD_SETTLE_DELAY,
+    ) -> None:
+        """Send a command under the TCP lock, wait, then refresh.
+
+        All control methods follow the same pattern:
+        1. Acquire the TCP lock (serialize with polling).
+        2. Send the command.
+        3. Wait for the CU to process the change.
+        4. Request a data refresh so the UI updates.
+        """
+        async with self._tcp_lock:
+            await coro
+        await asyncio.sleep(delay)
+        await self.async_request_refresh()
+
     # ─── Control methods: device-level ───────────────────────────────
 
     async def async_turn_on(self) -> None:
         """Turn device on."""
-        async with self._tcp_lock:
-            await self.client.turn_on()
-        await asyncio.sleep(_CMD_SETTLE_DELAY)
-        await self.async_request_refresh()
+        await self._command(self.client.turn_on())
 
     async def async_turn_off(self) -> None:
         """Turn device off."""
-        async with self._tcp_lock:
-            await self.client.turn_off()
-        await asyncio.sleep(_CMD_SETTLE_DELAY)
-        await self.async_request_refresh()
+        await self._command(self.client.turn_off())
 
     async def async_set_hvac(self, is_cooling: bool, mode: int) -> None:
         """Set CU on with the given heating/cooling mode."""
-        async with self._tcp_lock:
-            await self.client.update_cu(
+        await self._command(
+            self.client.update_cu(
                 is_off=False, is_cooling=is_cooling, operating_mode=mode,
             )
-        await asyncio.sleep(_CMD_SETTLE_DELAY)
-        await self.async_request_refresh()
+        )
 
     async def async_set_cooling_mode(self, mode: int) -> None:
         """Set cooling mode (1=raff, 2=deum, 3=vent)."""
-        async with self._tcp_lock:
-            await self.client.set_cooling_mode(mode)
-        await asyncio.sleep(_CMD_SETTLE_DELAY)
-        await self.async_request_refresh()
+        await self._command(self.client.set_cooling_mode(mode))
 
     async def async_set_heating_mode(self) -> None:
         """Switch to heating mode."""
-        async with self._tcp_lock:
-            await self.client.set_heating_mode()
-        await asyncio.sleep(_CMD_SETTLE_DELAY)
-        await self.async_request_refresh()
+        await self._command(self.client.set_heating_mode())
 
     # ─── Control methods: zone-level ─────────────────────────────────
 
@@ -282,10 +306,7 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
         """Set zone target temperature."""
         zone = self._find_zone(zone_id)
         if zone:
-            async with self._tcp_lock:
-                await self.client.set_zone_temp(zone, temperature)
-            await asyncio.sleep(_CMD_SETTLE_DELAY)
-            await self.async_request_refresh()
+            await self._command(self.client.set_zone_temp(zone, temperature))
         else:
             _LOGGER.error("Zone %d not found", zone_id)
 
@@ -293,28 +314,19 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
         """Turn a zone on."""
         zone = self._find_zone(zone_id)
         if zone:
-            async with self._tcp_lock:
-                await self.client.turn_zone_on(zone)
-            await asyncio.sleep(_CMD_SETTLE_DELAY)
-            await self.async_request_refresh()
+            await self._command(self.client.turn_zone_on(zone))
 
     async def async_turn_zone_off(self, zone_id: int) -> None:
         """Turn a zone off."""
         zone = self._find_zone(zone_id)
         if zone:
-            async with self._tcp_lock:
-                await self.client.turn_zone_off(zone)
-            await asyncio.sleep(_CMD_SETTLE_DELAY)
-            await self.async_request_refresh()
+            await self._command(self.client.turn_zone_off(zone))
 
     async def async_update_zone(self, zone_id: int, **kwargs) -> None:
         """Generic zone update with arbitrary kwargs."""
         zone = self._find_zone(zone_id)
         if zone:
-            async with self._tcp_lock:
-                await self.client.update_zone(zone, **kwargs)
-            await asyncio.sleep(_CMD_SETTLE_DELAY)
-            await self.async_request_refresh()
+            await self._command(self.client.update_zone(zone, **kwargs))
 
     async def async_set_zone_serranda(self, zone_id: int, value: int) -> None:
         """Set serranda (damper) value for a zone.
@@ -323,29 +335,35 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
             zone_id: The zone to update.
             value: 0=Auto, 1=A1, 2=A2, 3=A3.
 
-        Important: upd_zona requires fan_set and shu_set to be set to the
-        same value. Sending fan_set=-1 causes the Polaris CU to hang.
+        The library's update_zone checks zone.serranda != -1 to decide
+        whether to include shu_set in the command. Since we no longer
+        merge EV→serranda on zone objects (to avoid polluting regular
+        commands), we temporarily set zone.serranda so the damper
+        command is sent correctly, then restore it.
         """
         zone = self._find_zone(zone_id)
-        if zone:
-            async with self._tcp_lock:
-                await self.client.set_zone_serranda(zone, value)
-            # Update local cache so UI reflects the change immediately
-            if zone_id in self._zone_details:
-                self._zone_details[zone_id]["shu_set"] = value
-                self._zone_details[zone_id]["shu"] = value
-                # Also update EV fields for MiniDiscovery2X modules
-                self._zone_details[zone_id]["EV_set"] = value
-                self._zone_details[zone_id]["EV"] = value
-            await asyncio.sleep(2)  # serranda needs more time to settle
-            await self.async_request_refresh()
-        else:
+        if not zone:
             _LOGGER.error("Zone %d not found for serranda update", zone_id)
+            return
 
-    @property
-    def zone_details(self) -> dict[int, dict]:
-        """Return cached zone details (from stato_zona)."""
-        return self._zone_details
+        # Temporarily mark zone as having a serranda so the library
+        # includes shu_set/fan_set in the upd_zona command.
+        old_serranda = zone.serranda
+        zone.serranda = value
+        try:
+            await self._command(
+                self.client.set_zone_serranda(zone, value),
+                delay=2,  # serranda needs more time to settle
+            )
+        finally:
+            zone.serranda = old_serranda
+
+        # Update local cache so UI reflects the change immediately
+        if zone_id in self._zone_details:
+            self._zone_details[zone_id]["shu_set"] = value
+            self._zone_details[zone_id]["shu"] = value
+            self._zone_details[zone_id]["EV_set"] = value
+            self._zone_details[zone_id]["EV"] = value
 
     async def async_shutdown(self) -> None:
         """Shutdown coordinator and disconnect client."""
