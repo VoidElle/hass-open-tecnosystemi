@@ -182,7 +182,6 @@ class PolarisMainClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
     def _handle_coordinator_update(self) -> None:
         self.async_write_ha_state()
 
-
 # ─── Zone-level entity ───────────────────────────────────────────────────────
 
 class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
@@ -194,6 +193,10 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
 
     Mode/preset are read-only here (reflect CU state) - change them via the
     PolarisMainClimate entity.
+
+    Swing mode (serranda/damper) is enabled dynamically once zone details
+    arrive from stato_zona.  This avoids fixing the feature at entity creation
+    time, when details may not yet be available (see issue #23).
     """
 
     _attr_has_entity_name = True
@@ -215,25 +218,25 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
         self._zone_id = zone_id
         self._coordinator = coordinator
         self._attr_unique_id = f"polaris_{coordinator.serial}_zone_{zone_id}"
+        self._has_serranda = False
 
-        # Enable swing_mode for zones that have a serranda (damper) installed.
-        # MiniDiscovery2X modules report serranda via EV/EV_set (not shu/shu_set).
-        # shu is always -1 for these modules. The coordinator merges EV->serranda
-        # when shu=-1, so we check both fields here.
-        detail = coordinator.zone_details.get(zone_id, {})
+    def _check_serranda_support(self) -> bool:
+        """Check if this zone has a serranda (damper) based on zone details.
+
+        Called on every coordinator update to dynamically enable/disable
+        SWING_MODE when zone details arrive (they may not be available at
+        entity creation time due to incremental fetching).
+
+        Stealth2X modules report serranda via shu/shu_set (shu != -1).
+        MiniDiscovery2X modules report serranda via EV/EV_set instead
+        (shu is always -1 for these modules).  We check both fields.
+        """
+        detail = self._coordinator.zone_details.get(self._zone_id, {})
+        if not detail:
+            return False
         shu = detail.get("shu", -1)
         ev_set = detail.get("EV_set", -1)
-        has_serranda = (shu != -1) or (ev_set >= 0)
-        if has_serranda:
-            self._attr_supported_features |= ClimateEntityFeature.SWING_MODE
-            self._attr_swing_modes = list(SERRANDA_OPTIONS.values())
-            self._has_serranda = True
-            _LOGGER.debug(
-                "[Polaris] Zone %d: serranda enabled (shu=%s, EV_set=%s)",
-                zone_id, shu, ev_set,
-            )
-        else:
-            self._has_serranda = False
+        return (shu != -1) or (ev_set >= 0)
 
     @property
     def _zone(self) -> PolarisZone | None:
@@ -298,8 +301,7 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
     def hvac_action(self) -> HVACAction | None:
         """Return the current running action based on CU operating mode.
 
-        Previously this always returned IDLE for active zones, which was
-        incorrect. The zone inherits its action from the CU mode.
+        The zone inherits its action from the CU mode.
         """
         zone = self._zone
         dev = self._device
@@ -344,13 +346,23 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
 
     @property
     def swing_mode(self) -> str | None:
-        """Return current serranda (damper) position."""
+        """Return current serranda (damper) position.
+
+        Reads from coordinator.zone_details (the stato_zona cache),
+        falling back to EV_set for MiniDiscovery2X zones where
+        shu_set is always -1.  The coordinator merges shu/shu_set
+        into zone objects for command purposes, but the UI position
+        must also cover the EV_set case.
+        """
         if not self._has_serranda:
             return None
-        zone = self._zone
-        if not zone:
+        detail = self._coordinator.zone_details.get(self._zone_id, {})
+        if not detail:
             return None
-        return SERRANDA_OPTIONS.get(zone.serranda_set, "Auto")
+        value = detail.get("shu_set", -1)
+        if value == -1:
+            value = detail.get("EV_set", -1)
+        return SERRANDA_OPTIONS.get(value, "Auto")
 
     async def async_set_swing_mode(self, swing_mode: str) -> None:
         """Set serranda (damper) position: Auto, A1, A2, A3."""
@@ -366,4 +378,27 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator.
+
+        Dynamically enable/disable SWING_MODE based on zone details.
+        Zone details may arrive after entity creation (incremental fetching),
+        so we check on every update rather than only in __init__.
+        """
+        has_serranda = self._check_serranda_support()
+        if has_serranda != self._has_serranda:
+            self._has_serranda = has_serranda
+            if has_serranda:
+                self._attr_supported_features |= ClimateEntityFeature.SWING_MODE
+                self._attr_swing_modes = list(SERRANDA_OPTIONS.values())
+                _LOGGER.info(
+                    "[Polaris] Zone %d: serranda enabled dynamically",
+                    self._zone_id,
+                )
+            else:
+                self._attr_supported_features &= ~ClimateEntityFeature.SWING_MODE
+                self._attr_swing_modes = None
+                _LOGGER.info(
+                    "[Polaris] Zone %d: serranda disabled",
+                    self._zone_id,
+                )
         self.async_write_ha_state()
