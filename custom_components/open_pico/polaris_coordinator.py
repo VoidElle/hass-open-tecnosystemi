@@ -386,16 +386,22 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
             finally:
                 zone.serranda = old_serranda
 
+        # Update the cache before the refresh so the UI shows the new position
+        # immediately. Write only the fields the module uses: shu on Stealth2X,
+        # EV on MiniDiscovery2X (shu == -1). Writing shu there would make the
+        # merge set zone.serranda and add shu_set to every later command; writing
+        # EV on Stealth2X would overwrite its valve state.
+        detail = self._zone_details.get(zone_id)
+        if detail:
+            if detail.get("shu", -1) != -1:
+                detail["shu"] = detail["shu_set"] = value
+            else:
+                detail["EV"] = detail["EV_set"] = value
+            self.async_update_listeners()
+
         # Serranda needs more time to settle than other commands.
         await asyncio.sleep(2)
         await self.async_request_refresh()
-
-        # Update local cache so UI reflects the change immediately
-        if zone_id in self._zone_details:
-            self._zone_details[zone_id]["shu_set"] = value
-            self._zone_details[zone_id]["shu"] = value
-            self._zone_details[zone_id]["EV_set"] = value
-            self._zone_details[zone_id]["EV"] = value
 
     async def async_shutdown(self) -> None:
         """Shutdown coordinator and disconnect client."""

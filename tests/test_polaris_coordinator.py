@@ -278,3 +278,36 @@ class TestPolarisSetZoneSerranda:
     async def test_unknown_zone_sends_nothing(self, detail_coordinator, mock_polaris_client):
         await detail_coordinator.async_set_zone_serranda(99, 2)
         mock_polaris_client.set_zone_serranda.assert_not_called()
+
+    async def test_mini_cache_writes_ev_only(self, detail_coordinator):
+        # MiniDiscovery2X: writing shu would make the merge set zone.serranda
+        # and add shu_set to every later command (issue #23 item 5).
+        detail_coordinator._zone_details[1] = dict(MINI_DETAIL)
+        await detail_coordinator.async_set_zone_serranda(1, 3)
+        detail = detail_coordinator.zone_details[1]
+        assert (detail["EV"], detail["EV_set"]) == (3, 3)
+        assert (detail["shu"], detail["shu_set"]) == (-1, -1)
+
+    async def test_stealth_cache_writes_shu_only(self, detail_coordinator):
+        # Stealth2X: EV is the valve state and must not be overwritten.
+        detail_coordinator._zone_details[1] = dict(STEALTH_DETAIL)
+        await detail_coordinator.async_set_zone_serranda(1, 3)
+        detail = detail_coordinator.zone_details[1]
+        assert (detail["shu"], detail["shu_set"]) == (3, 3)
+        assert (detail["EV"], detail["EV_set"]) == (0, 0)
+
+    async def test_cache_updated_and_pushed_before_refresh(self, detail_coordinator):
+        detail_coordinator._zone_details[1] = dict(MINI_DETAIL)
+        seen = []
+        detail_coordinator.async_update_listeners = MagicMock(
+            side_effect=lambda: seen.append(("listeners", detail_coordinator.zone_details[1]["EV_set"]))
+        )
+        detail_coordinator.async_request_refresh.side_effect = lambda: seen.append(("refresh", None))
+        await detail_coordinator.async_set_zone_serranda(1, 3)
+        assert seen == [("listeners", 3), ("refresh", None)]
+
+    async def test_no_cache_entry_no_listener_push(self, detail_coordinator):
+        detail_coordinator.async_update_listeners = MagicMock()
+        await detail_coordinator.async_set_zone_serranda(1, 3)
+        detail_coordinator.async_update_listeners.assert_not_called()
+        assert 1 not in detail_coordinator.zone_details
