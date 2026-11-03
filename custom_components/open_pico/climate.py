@@ -182,7 +182,6 @@ class PolarisMainClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
     def _handle_coordinator_update(self) -> None:
         self.async_write_ha_state()
 
-
 # ─── Zone-level entity ───────────────────────────────────────────────────────
 
 class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
@@ -197,7 +196,7 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
 
     Swing mode (serranda/damper) is enabled dynamically once zone details
     arrive from stato_zona.  This avoids fixing the feature at entity creation
-    time, when details may not yet be available (see issue #3).
+    time, when details may not yet be available (see issue #23).
     """
 
     _attr_has_entity_name = True
@@ -226,11 +225,11 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
 
         Called on every coordinator update to dynamically enable/disable
         SWING_MODE when zone details arrive (they may not be available at
-        entity creation time).
+        entity creation time due to incremental fetching).
 
-        MiniDiscovery2X modules report serranda via EV/EV_set (not shu/shu_set).
-        shu is always -1 for these modules. The coordinator merges EV->serranda
-        when shu=-1, so we check both fields here.
+        Stealth2X modules report serranda via shu/shu_set (shu != -1).
+        MiniDiscovery2X modules report serranda via EV/EV_set instead
+        (shu is always -1 for these modules).  We check both fields.
         """
         detail = self._coordinator.zone_details.get(self._zone_id, {})
         if not detail:
@@ -349,21 +348,21 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
     def swing_mode(self) -> str | None:
         """Return current serranda (damper) position.
 
-        Reads from coordinator.zone_details (the stato_zona cache) rather
-        than zone.serranda_set, because we intentionally do NOT merge
-        serranda data into PolarisZone objects — doing so would cause the
-        library's update_zone() to send shu_set on every command.
+        Reads from coordinator.zone_details (the stato_zona cache),
+        falling back to EV_set for MiniDiscovery2X zones where
+        shu_set is always -1.  The coordinator merges shu/shu_set
+        into zone objects for command purposes, but the UI position
+        must also cover the EV_set case.
         """
         if not self._has_serranda:
             return None
         detail = self._coordinator.zone_details.get(self._zone_id, {})
         if not detail:
             return None
-        # MiniDiscovery2X: use EV_set; Stealth2X: use shu_set
-        shu_set = detail.get("shu_set", -1)
-        if shu_set == -1:
-            shu_set = detail.get("EV_set", -1)
-        return SERRANDA_OPTIONS.get(shu_set, "Auto")
+        value = detail.get("shu_set", -1)
+        if value == -1:
+            value = detail.get("EV_set", -1)
+        return SERRANDA_OPTIONS.get(value, "Auto")
 
     async def async_set_swing_mode(self, swing_mode: str) -> None:
         """Set serranda (damper) position: Auto, A1, A2, A3."""
