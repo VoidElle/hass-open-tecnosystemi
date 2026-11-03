@@ -4,7 +4,7 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, PropertyMock
 
 import pytest
-from homeassistant.components.climate import HVACMode, HVACAction
+from homeassistant.components.climate import ClimateEntityFeature, HVACMode, HVACAction
 
 from custom_components.open_pico.climate import PolarisMainClimate, PolarisZoneClimate
 from custom_components.open_pico.const import DOMAIN
@@ -283,3 +283,62 @@ class TestPolarisZoneClimateControl:
         polaris_coordinator.async_turn_zone_off = AsyncMock()
         await zone_climate.async_turn_off()
         polaris_coordinator.async_turn_zone_off.assert_called_once_with(1)
+
+
+# ─── Dynamic SWING_MODE (issue #23 / PR #24) ─────────────────────────────────
+
+@pytest.fixture
+def swing_zone(zone_climate):
+    zone_climate.async_write_ha_state = MagicMock()
+    return zone_climate
+
+
+class TestPolarisZoneClimateSwing:
+    def test_no_swing_without_details(self, swing_zone):
+        swing_zone._handle_coordinator_update()
+        assert not swing_zone.supported_features & ClimateEntityFeature.SWING_MODE
+        assert swing_zone.swing_mode is None
+
+    def test_swing_enabled_when_details_arrive(self, swing_zone, polaris_coordinator):
+        swing_zone._handle_coordinator_update()
+        assert not swing_zone.supported_features & ClimateEntityFeature.SWING_MODE
+
+        polaris_coordinator._zone_details[1] = {"shu": -1, "shu_set": -1, "EV": 2, "EV_set": 2}
+        swing_zone._handle_coordinator_update()
+
+        assert swing_zone.supported_features & ClimateEntityFeature.SWING_MODE
+        assert swing_zone.swing_modes == ["Auto", "A1", "A2", "A3"]
+        swing_zone.async_write_ha_state.assert_called()
+
+    def test_swing_disabled_when_details_lose_damper(self, swing_zone, polaris_coordinator):
+        polaris_coordinator._zone_details[1] = {"shu": 1, "shu_set": 1}
+        swing_zone._handle_coordinator_update()
+        polaris_coordinator._zone_details[1] = {"shu": -1, "shu_set": -1, "EV_set": -1}
+        swing_zone._handle_coordinator_update()
+        assert not swing_zone.supported_features & ClimateEntityFeature.SWING_MODE
+        assert swing_zone.swing_modes is None
+
+    def test_no_swing_when_no_damper_fields(self, swing_zone, polaris_coordinator):
+        polaris_coordinator._zone_details[1] = {"shu": -1, "shu_set": -1, "EV": -1, "EV_set": -1}
+        swing_zone._handle_coordinator_update()
+        assert not swing_zone.supported_features & ClimateEntityFeature.SWING_MODE
+
+    def test_swing_mode_reads_shu_set(self, swing_zone, polaris_coordinator):
+        polaris_coordinator._zone_details[1] = {"shu": 3, "shu_set": 3, "EV_set": 0}
+        swing_zone._handle_coordinator_update()
+        assert swing_zone.swing_mode == "A3"
+
+    def test_swing_mode_falls_back_to_ev_set(self, swing_zone, polaris_coordinator):
+        polaris_coordinator._zone_details[1] = {"shu": -1, "shu_set": -1, "EV": 1, "EV_set": 1}
+        swing_zone._handle_coordinator_update()
+        assert swing_zone.swing_mode == "A1"
+
+    async def test_set_swing_mode_calls_coordinator(self, swing_zone, polaris_coordinator):
+        polaris_coordinator.async_set_zone_serranda = AsyncMock()
+        await swing_zone.async_set_swing_mode("A2")
+        polaris_coordinator.async_set_zone_serranda.assert_awaited_once_with(1, 2)
+
+    async def test_set_swing_mode_unknown_label_ignored(self, swing_zone, polaris_coordinator):
+        polaris_coordinator.async_set_zone_serranda = AsyncMock()
+        await swing_zone.async_set_swing_mode("A9")
+        polaris_coordinator.async_set_zone_serranda.assert_not_called()
