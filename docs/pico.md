@@ -1,70 +1,70 @@
-# Pico Integration
+# Pico
 
-Local UDP-based ventilation and air quality units by Tecnosystemi.
+Tecnosystemi Pico ventilation and air quality units, controlled over your local network (UDP), with an optional cloud fallback.
 
-## Protocol
-- **Transport**: UDP unicast
-- **Local port**: 40069 (outbound from HA)
-- **Device port**: 40070 (device listens here)
-- A single shared UDP socket (`SharedTransportManager`) is reused across all Pico devices to minimise socket usage.
-- Each device has a unique `device_id` (slug of user-provided name, e.g. `pico_living_room`).
+## Network Requirements
+
+- Home Assistant and the Pico must be on the same network.
+- Allow UDP between them: the Pico listens on port **40070** and always replies to port **40069** on the Home Assistant host.
+- Give the Pico a static or reserved IP: the integration connects to the IP entered at setup.
 
 ## Setup
 
 ### Manual
-Fields required at config flow:
 
 | Field | Description |
 |-------|-------------|
-| `ip` | Device LAN IP address |
-| `pin` | Device PIN (displayed in device UI) |
-| `name` | Friendly name (used in entity IDs and device registry) |
+| IP | Device LAN IP address |
+| PIN | Device PIN |
+| Name | Friendly name, used in entity IDs and the device registry |
 
-### Auto-Scan
-1. Enter subnet (e.g. `192.168.1.0/24`) and PIN
-2. Integration probes the network via `PicoAutoDiscovery.discover()`
-3. Already-configured devices are excluded from results
-4. Select a discovered IP, assign a name
+### Scan
+1. Enter your subnet (e.g. `192.168.1.0/24`) and the PIN.
+2. The integration probes the network and lists the Pico devices that answer. Only devices with that PIN answer.
+3. Already-configured devices are left out.
+4. Pick a device and give it a name.
 
 ### Cloud
-Fallback for a Pico not reachable on the LAN. Entry data has `"connection": "cloud"` (entries without the key are local).
-1. Enter Tecnosystemi account email and password
-2. Select the device, enter its PIN and a name
+Use it only when the Pico is not reachable on your local network.
+1. Enter your Tecnosystemi account email and password.
+2. Pick the device, then enter its PIN and a name.
 
-Uses `PicoCloudClient` (HTTPS) instead of UDP. Polled every 30 s by default (`CLOUD_SCAN_INTERVAL`); after a command the coordinator waits 3 s by default (`CLOUD_COMMAND_DELAY`) before refreshing because the backend applies it asynchronously. Both are set in the device step (polling 10-300 s, command delay 0-30 s). Email, password and an `android_id` are stored in the config entry.
+The state is polled every 30 s by default (10-300 s). After a command the integration waits 3 s by default (0-30 s) before refreshing, because the vendor backend applies commands with a short delay. Raise this delay if the state flips back after a command. The account email and password are stored in the config entry.
+
+The Tecnosystemi backend allows one session per account at a time: while the integration is running, the official app shows an alert and stops working.
 
 ---
 
 ## Entities
 
 ### Fan — `fan.<name>_cmv`
-Main control entity for the Pico device.
+Main control entity.
 
 | Feature | Supported |
 |---------|-----------|
 | Turn on / off | ✅ |
 | Preset modes | ✅ (12 operating modes) |
-| Fan speed (%) | ✅ (when mode supports it and night mode is off) |
+| Fan speed (%) | ✅ (when the mode supports it and night mode is off) |
 
-**Preset modes** (operating modes):
+**Preset modes:**
 
-| Preset | Mode ID |
-|--------|---------|
-| `heat_recovery` | 1 |
-| `extraction` | 2 |
-| `immission` | 3 |
-| `humidity_recovery` | 4 |
-| `humidity_extraction` | 5 |
-| `comfort_summer` | 6 |
-| `comfort_winter` | 7 |
-| `co2_recovery` | 8 |
-| `co2_extraction` | 9 |
-| `humidity_co2_recovery` | 10 |
-| `humidity_co2_extraction` | 11 |
-| `natural_ventilation` | 12 |
+| Preset | Mode |
+|--------|------|
+| `heat_recovery` | Heat recovery |
+| `extraction` | Extraction |
+| `immission` | Immission |
+| `humidity_recovery` | Humidity recovery |
+| `humidity_extraction` | Humidity extraction |
+| `comfort_summer` | Comfort summer |
+| `comfort_winter` | Comfort winter |
+| `co2_recovery` | CO2 recovery |
+| `co2_extraction` | CO2 extraction |
+| `humidity_co2_recovery` | Humidity/CO2 recovery |
+| `humidity_co2_extraction` | Humidity/CO2 extraction |
+| `natural_ventilation` | Natural ventilation |
 
-Fan speed is only settable when `support_fan_speed_control=True` and night mode is not active.
-Setting percentage to 0 turns the device off.
+Fan speed can be set in Heat Recovery, Extraction, Immission, Comfort Summer and Comfort Winter, while night mode is off. 100% is accepted in any mode outside night mode. In the other cases the fan entity shows only on/off.
+Setting the speed to 0% turns the device off.
 
 ---
 
@@ -77,6 +77,8 @@ Setting percentage to 0 turns the device off.
 | `sensor.<name>_co2` | CO₂ | ppm | |
 | `sensor.<name>_tvoc` | VOC | ppm | Icon changes with level |
 | `sensor.<name>_eco2` | CO₂ (eCO₂) | ppm | Icon changes with level |
+
+CO2, eCO2 and TVOC read 0 on models without the air quality sensor. They also read 0 on models with the sensor until a mode that turns it on is active (e.g. CO2 recovery). Disable these entities if you don't need them.
 
 **TVOC icon thresholds** (ppm):
 - < 220: `mdi:air-filter` (Excellent)
@@ -98,10 +100,10 @@ Setting percentage to 0 turns the device off.
 
 | Entity | Description | Condition |
 |--------|-------------|-----------|
-| `switch.<name>_night_mode` | Enables night mode | Only available when mode supports night mode |
-| `switch.<name>_led_status` | Controls panel LED | Always available |
+| `switch.<name>_night_mode` | Enables night mode | Available only in modes that support fan speed |
+| `switch.<name>_led_status` | Controls the panel LED | Always available |
 
-When night mode is active, fan speed control is disabled.
+When night mode is on, fan speed control is disabled.
 
 ---
 
@@ -109,8 +111,8 @@ When night mode is active, fan speed control is disabled.
 
 | Entity | Options | Notes |
 |--------|---------|-------|
-| `select.<name>_preset_mode` | All 12 preset modes | Mirrors fan preset |
-| `select.<name>_target_humidity` | `40%`, `50%`, `60%` | Only available when mode supports humidity target |
+| `select.<name>_preset_mode` | All 12 preset modes | Same as the fan preset |
+| `select.<name>_target_humidity` | `40%`, `50%`, `60%` | Available only in Humidity Recovery, Humidity Extraction, Humidity/CO2 Recovery, Humidity/CO2 Extraction |
 
 ---
 
@@ -118,7 +120,7 @@ When night mode is active, fan speed control is disabled.
 
 | Entity | Device Class | Description |
 |--------|-------------|-------------|
-| `binary_sensor.<name>_filter_maintenance_required` | problem | `on` when filters need cleaning |
+| `binary_sensor.<name>_filter_maintenance_required` | problem | `on` when the filters need cleaning |
 
 ---
 
@@ -126,18 +128,14 @@ When night mode is active, fan speed control is disabled.
 
 | Entity | Description | Condition |
 |--------|-------------|-----------|
-| `button.<name>_reset_filter_maintenance` | Sends maintenance reset command | Only available when `filter_maintenance = on` |
+| `button.<name>_reset_filter_maintenance` | Resets the filter maintenance alert | Available only when the maintenance alert is on |
 
 ---
 
 ## Update Interval
-Default: **5 seconds** (`DEFAULT_SCAN_INTERVAL` in `const.py`). Cloud entries: **30 seconds** by default (`CLOUD_SCAN_INTERVAL`), configurable at setup.
+Local: every **5 seconds**. Cloud: every **30 seconds** by default, set at setup.
 
-## Multi-Device Support
-Multiple Pico devices share one UDP socket. The `PicoClientManager` singleton is created on first Pico entry setup and destroyed when the last local Pico entry is removed. Cloud entries do not use it.
-
-## Error Handling
-- If device is unreachable on poll, coordinator attempts reconnect automatically.
-- Local client: 5 s timeout, 1 attempt per request, 2 s retry delay. Cloud client: 15 s timeout, 2 attempts, 2 s delay.
-- Cloud: invalid credentials raise `ConfigEntryError` (no retry); other connect errors raise `ConfigEntryNotReady`.
-- `ConfigEntryNotReady` raised if initial connect/refresh fails.
+## Connection Problems
+- If the Pico stops answering, the integration reconnects by itself on the next poll and the entities become unavailable until it answers again.
+- If the Pico cannot be reached when Home Assistant starts, the entry is retried automatically.
+- Cloud: wrong email or password stops the entry with an error; fix the credentials by adding the device again.

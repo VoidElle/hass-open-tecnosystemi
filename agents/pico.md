@@ -3,7 +3,7 @@ name: pico
 description: Expert agent for the Pico ventilation/air quality device integration. Use when working on the UDP protocol, the cloud fallback (PicoCloudClient), PicoClientManager, SharedTransportManager, MainCoordinator, or any Pico entities (fan, sensor, switch, select, button, binary_sensor).
 ---
 
-# Hassio Open Pico — Pico Device Integration
+# Open Tecnosystemi — Pico Device Integration
 
 Home Assistant custom integration for Tecnosystemi **Pico** ventilation/air quality devices.  
 Protocol: **local UDP**, listen port `40069`, send to device port `40070`. Optional **cloud fallback** (HTTPS, vendor backend) for devices not reachable on the LAN; see [Cloud fallback](#cloud-fallback-picocloudclient).
@@ -12,9 +12,11 @@ Protocol: **local UDP**, listen port `40069`, send to device port `40070`. Optio
 
 ## Configuration (UI only)
 
-No YAML. Every device is one config entry created in **Settings -> Devices & Services -> Add Integration -> Open Pico** (`config_flow.py`). Steps: `user` (Pico/Polaris) -> `pico` (manual / scan / cloud) -> `pico_manual` | `pico_scan` -> `pico_scan_results` -> `pico_scan_confirm` | `pico_cloud` -> `pico_cloud_device`.
+No YAML. Every device is one config entry created in **Settings -> Devices & Services -> Add Integration -> Open Tecnosystemi** (`config_flow.py`). Steps: `user` (Pico/Polaris) -> `pico` (manual / scan / cloud) -> `pico_manual` | `pico_scan` -> `pico_scan_results` -> `pico_scan_confirm` | `pico_cloud` -> `pico_cloud_device`.
 
 Local entry data: `device_type: "pico"`, `ip`, `pin`, `name`, `local_port` (40069), `verbose`. Cloud entry data: see [Entry data](#entry-data).
+
+Config entry unique ID: `pico_<name_slug>` (`_abort_if_unique_id_configured` prevents duplicates). Every step that creates an entry validates connectivity first.
 
 ---
 
@@ -26,7 +28,7 @@ Local entry data: `device_type: "pico"`, `ip`, `pin`, `name`, `local_port` (4006
 3. Cloud branch (`entry.data["connection"] == "cloud"`): builds `PicoCloudClient` directly (HTTPS, no `PicoClientManager`), `PicoAuthError` -> `ConfigEntryError`, other connect errors -> `ConfigEntryNotReady`; coordinator gets `scan_interval` / `command_delay` from `entry.data` (defaults `CLOUD_SCAN_INTERVAL`, `CLOUD_COMMAND_DELAY`)
 4. `coordinator.async_refresh()` (30 s); failure -> `client.disconnect()` + `ConfigEntryNotReady`
 5. Store in `hass.data[DOMAIN][entry.entry_id]`, then `async_forward_entry_setups(entry, PICO_PLATFORMS)`
-6. Unload (`async_unload_entry`): unload platforms, `coordinator.async_shutdown()`; cloud -> `client.disconnect()`; local -> shut down `pico_manager` when no other local Pico entry remains
+6. Unload (`async_unload_entry`): unload platforms, `coordinator.async_shutdown()`; cloud -> `client.disconnect()`; local -> when no other local Pico entry remains, `PicoClientManager.shutdown()` (disconnects every client, then `SharedTransportManager.shutdown()`) and drops `pico_manager` from `hass.data`
 
 ### hass.data layout
 ```python
@@ -36,6 +38,20 @@ hass.data[DOMAIN] = {
     "pico_manager_lock": asyncio.Lock,
 }
 ```
+
+### Module map (`custom_components/open_pico/`)
+| File | Role |
+|------|------|
+| `__init__.py` | Entry setup / unload, `PICO_PLATFORMS`, `POLARIS_PLATFORMS` |
+| `const.py` | `DOMAIN`, intervals, `MODE_INT_TO_PRESET`/`MODE_PRESET_TO_INT`, `TARGET_HUMIDITY_OPTIONS`/`REVERSED_TARGET_HUMIDITY_OPTIONS`, `POLARIS_COOLING_MODES` |
+| `config_flow.py` | UI config flow (Pico + Polaris) |
+| `base.py` | `BaseEntity` (Pico entities only) |
+| `coordinator.py` | `MainCoordinator` (Pico) |
+| `polaris_coordinator.py` | `PolarisCoordinator`, `PolarisData` |
+| `pico_manager.py` | `PicoClientManager` (shared UDP transport) |
+| `fan.py`, `switch.py`, `select.py`, `button.py` | Pico entities |
+| `sensor.py`, `binary_sensor.py` | Pico + Polaris entities |
+| `climate.py` | Polaris main + zone climate |
 
 ### Platforms (`PICO_PLATFORMS` in `__init__.py`)
 ```python
@@ -53,11 +69,11 @@ All Pico clients share **one UDP socket** — avoids port conflicts when multipl
 |-------|------|------|
 | `PicoClientManager` | `pico_manager.py` | Creates/manages clients; owns `SharedTransportManager` singleton |
 | `SharedTransportManager` | `open-pico-local-api` pkg (`shared_transport_manager`) | Singleton; binds UDP socket; routes responses by IDP range |
-| `PicoClient` | `open-pico-local-api` pkg (`pico_client`) | Per-device client; always `use_shared_transport=True` |
+| `PicoClient` | `open-pico-local-api` pkg (`pico_client`) | Per-device client; always uses the shared transport |
 
 ### IDP routing
 Each device gets an allocated IDP range (`idp_range_start`, `idp_range_size=10000`).  
-`SharedTransportManager._find_device_by_idp(idp)` routes responses to correct device queue.  
+`SharedTransportManager.find_device_by_idp(idp)` routes responses to correct device queue.  
 IDP counter wraps within allocated range. On IDP sync failure: reset counter, retry up to `retry_attempts` times.
 
 ### `PicoClientManager.create_client()` defaults
@@ -173,7 +189,7 @@ Fields parsed in `PicoDeviceModel.from_dict(data)`:
 
 ## Coordinator (`MainCoordinator`)
 
-`coordinator.data` is `PicoDeviceModel | None`. All control methods call the client then `_refresh_after_command()` (sleeps `command_delay`, 0 for local entries, then `async_refresh()`).
+`coordinator.data` is `PicoDeviceModel | None`. `update_interval`: 5 s (`DEFAULT_SCAN_INTERVAL`) for local entries, `scan_interval` from the entry for cloud ones. All control methods call the client then `_refresh_after_command()` (sleeps `command_delay`, 0 for local entries, then `async_refresh()`).
 
 ### Convenience properties
 ```python
@@ -182,7 +198,7 @@ coordinator.temperature    # float (v_tmpr)
 coordinator.humidity       # float (v_umd)
 coordinator.air_quality    # int (v_AirQ)
 coordinator.current_mode   # DeviceModeEnum | None
-coordinator.fan_speed      # int (spd_requested %)
+coordinator.fan_speed      # int (operating.speed_requested, from spd_rich, %)
 coordinator.night_mode_enabled  # bool
 coordinator.supports_fan_speed      # bool (mode-gated)
 coordinator.supports_night_mode     # bool (mode-gated)
@@ -201,7 +217,7 @@ coordinator.async_set_target_humidity(target: int) # raises if mode unsupported
 ```
 
 ### Failure handling
-`_consecutive_failures` tracked; `_max_failures_before_reset = 3`. On disconnect -> reconnect in `async_update_data`.
+`_consecutive_failures` tracked; after `_max_failures_before_reset = 3` failed polls the coordinator calls `client.reset_idp()`. If the client is not connected, the poll reconnects first.
 
 ---
 
@@ -223,8 +239,8 @@ Used only for entries with `entry.data["connection"] == "cloud"` (entries withou
 - Unload: `client.disconnect()` (closes the aiohttp session); manager shutdown counts only local Pico entries
 
 ### Status and commands
-- `get_status()` -> `GET GetPICOState`. `ResDescr` = backend `frm:"db"` record (control fields only) + `lastpk` (JSON string of the device's last `stato_sync`). Since library **2.6.2** `lastpk` is decoded and wins; flat fields only fill missing keys. Result is a normal `PicoDeviceModel`, same values as local: sensors, `par_rt`/`par_mm`, `memfree`, `is_led_state_on` are real
-- Before 2.6.2 cloud sensors were all `0` and an off LED read as on (db encodes `led_on_off_breve` off as `0`, device sends `2`). Never pin `open-pico-local-api` below `2.6.2`, and never add integration-side workarounds for these
+- `get_status()` -> `GET GetPICOState`. `ResDescr` = backend `frm:"db"` record (control fields only) + `lastpk` (JSON string of the device's last `stato_sync`). The library decodes `lastpk` and lets it win; flat fields only fill missing keys. Result is a normal `PicoDeviceModel`, same values as local: sensors, `par_rt`/`par_mm`, `memfree`, `is_led_state_on` are real
+- The flat db fields alone give sensors at `0` and an off LED read as on (db encodes `led_on_off_breve` off as `0`, device sends `2`). Keep the `open-pico-local-api` pin on a version with the `lastpk` merge, and never add integration-side workarounds for these
 - `data.device_info.name` is the name stored on the device (account name is in `raw_data["name"]`). Entities use `coordinator.device_name` (entry name), so this does not matter here
 - Commands are inherited from `PicoClient` and return after the **cloud ack** only (no `res: 99`); the device applies them asynchronously, hence `command_delay` before `_refresh_after_command()` refreshes
 - `reset_idp()` only resets the client counter; `bruteforce_idp()` raises `NotSupportedError`. Session re-login is automatic (55 min or HTTP 401)

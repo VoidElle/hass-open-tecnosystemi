@@ -12,7 +12,6 @@ Both device families communicate **over the local network**. Pico also has an op
 |------|-------------|
 | [Pico](pico.md) | Pico device setup, entities, and control |
 | [Polaris](polaris.md) | Polaris 5X device setup, entities, and control |
-| [Architecture](architecture.md) | Internals: coordinators, transport, config flow |
 
 ---
 
