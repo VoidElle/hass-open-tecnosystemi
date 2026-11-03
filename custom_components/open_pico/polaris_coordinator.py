@@ -33,6 +33,17 @@ _CMD_SETTLE_DELAY = 1.0
 # accumulate results across polls.
 _ZONE_DETAILS_PER_POLL = 2
 
+# After initial fetch, refresh one zone every N polls (round-robin).
+# With 6 zones at 30s poll interval and N=3, each zone refreshes
+# every ~18 polls = ~9 min.  This keeps serranda/fancoil values
+# reasonably fresh without adding a stato_zona to every poll.
+_ZONE_REFRESH_INTERVAL = 3
+
+# Maximum consecutive failures before a zone is skipped for details.
+# Reset to 0 on success.  Dynamic SWING_MODE handles the zone
+# showing up one poll after recovery.
+_MAX_ZONE_FAILURES = 3
+
 
 @dataclass
 class PolarisData:
@@ -58,6 +69,8 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
         self.polaris_ip = client.ip
         self._zone_details: dict[int, dict] = {}
         self._zone_refresh_index: int = 0
+        self._zone_failures: dict[int, int] = {}
+        self._poll_count: int = 0
         # Serialize all TCP communications to the CU.
         # The Polaris CU has a very limited TCP stack and cannot handle
         # concurrent connections -- multiple simultaneous requests cause
@@ -84,20 +97,16 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
     def _zones_needing_details(self, zones: list[PolarisZone]) -> list[PolarisZone]:
         """Return zones that still need stato_zona data.
 
-        Skips zones that already have details cached and zones with
-        errors (num_error != 0), whose stato_zona data is unreliable.
+        Skips zones that already have details cached, zones with
+        errors (num_error != 0), and zones that have failed too
+        many times consecutively.
         """
         return [
             z for z in zones
-            if z.zone_id not in self._zone_details and not z.num_error
+            if z.zone_id not in self._zone_details
+            and not z.num_error
+            and self._zone_failures.get(z.zone_id, 0) < _MAX_ZONE_FAILURES
         ]
-
-    @property
-    def all_zone_details_fetched(self) -> bool:
-        """True when every non-errored zone has cached details."""
-        if not self.data or not self.data.zones:
-            return False
-        return len(self._zones_needing_details(self.data.zones)) == 0
 
     async def _async_fetch_zone_details_incremental(
         self, zones: list[PolarisZone],
@@ -108,8 +117,8 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
         Two modes:
         - Initial: fetch missing zones, up to _ZONE_DETAILS_PER_POLL per cycle.
         - Refresh: after all zones are cached, rotate through one zone per
-          poll in round-robin to keep serranda/fancoil values fresh (~3 min
-          per zone with 6 zones at 30s poll interval).
+          _ZONE_REFRESH_INTERVAL polls in round-robin to keep serranda/fancoil
+          values fresh.
         """
         pending = self._zones_needing_details(zones)
 
@@ -117,7 +126,9 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
             # Initial fetch: get missing zones
             batch = pending[:_ZONE_DETAILS_PER_POLL]
         else:
-            # Refresh: round-robin through cached zones
+            # Refresh: only run every N polls to reduce CU load
+            if self._poll_count % _ZONE_REFRESH_INTERVAL != 0:
+                return
             valid_zones = [z for z in zones if not z.num_error]
             if not valid_zones:
                 return
@@ -127,20 +138,26 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
 
         for zone in batch:
             try:
-                detail = await self.client.get_zone_detail(zone.zone_id)
+                async with asyncio.timeout(self.client.timeout + 1):
+                    detail = await self.client.get_zone_detail(zone.zone_id)
                 if detail:
                     self._zone_details[zone.zone_id] = detail
+                    self._zone_failures.pop(zone.zone_id, None)
                     _LOGGER.debug(
                         "[%s] Fetched details for zone %d (%s)",
                         self.device_name, zone.zone_id, zone.name,
                     )
-                await asyncio.sleep(1)  # 1s spacing between stato_zona requests
             except Exception as err:
+                fails = self._zone_failures.get(zone.zone_id, 0) + 1
+                self._zone_failures[zone.zone_id] = fails
                 _LOGGER.warning(
-                    "[%s] Failed to fetch details for zone %d: %s",
-                    self.device_name, zone.zone_id, err,
+                    "[%s] Failed to fetch details for zone %d (%d/%d): %s",
+                    self.device_name, zone.zone_id, fails,
+                    _MAX_ZONE_FAILURES, err,
                 )
-                # Don't cache anything — will retry on next poll
+            # 1s spacing between stato_zona requests — runs even after
+            # a failure so the next request doesn't fire immediately.
+            await asyncio.sleep(1)
 
         if pending:
             remaining = len(pending) - len(batch)
@@ -167,20 +184,32 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
                 # stato_zona returns per-zone data not included in stato_r.
                 # We fetch a few zones per poll cycle and accumulate results,
                 # so a single slow/errored zone never blocks the others.
-                # After the initial fetch, we refresh one zone per poll
-                # in round-robin to keep values fresh.
-                if zones:
+                #
+                # Skip on the first refresh (self.data is None) because it
+                # runs inside the 30s setup timeout in __init__.py; a single
+                # slow zone could fail the whole setup.
+                if zones and self.data is not None:
                     await self._async_fetch_zone_details_incremental(zones)
 
-            # NOTE: We intentionally do NOT merge zone_details into the
-            # PolarisZone objects (z.serranda, z.fancoil, etc.).
-            # Reason: the library's update_zone() checks zone.serranda != -1
-            # to decide whether to include shu_set/fan_set in every command.
-            # If we set z.serranda from EV data, regular temp/on/off commands
-            # would unnecessarily send shu_set, which is incorrect for
-            # MiniDiscovery2X modules (see issue #23, item 5).
-            # Climate entities read serranda values from coordinator.zone_details
-            # instead.
+            self._poll_count += 1
+
+            # Merge cached serranda/fancoil data into zone objects.
+            # The library's update_zone() checks zone.serranda != -1 and
+            # zone.fancoil != -1 to decide whether to include shu_set/fan_set
+            # in commands.  Without this merge, temp/on/off commands would
+            # stop sending fan_set on fancoil zones.
+            #
+            # We merge only shu/shu_set/fan/fan_set — NOT the EV→shu fallback.
+            # MiniDiscovery2X zones report shu=-1 in stato_zona, so z.serranda
+            # stays -1 and ordinary commands correctly skip shu_set for them.
+            # The swing_mode UI reads EV_set from zone_details directly.
+            for z in zones:
+                detail = self._zone_details.get(z.zone_id)
+                if detail:
+                    z.serranda = detail.get("shu", -1)
+                    z.serranda_set = detail.get("shu_set", -1)
+                    z.fancoil = detail.get("fan", -1)
+                    z.fancoil_set = detail.get("fan_set", -1)
 
             _LOGGER.debug(
                 "[%s] Polaris update: on=%s, mode=%s, zones=%d",
@@ -336,27 +365,30 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
             value: 0=Auto, 1=A1, 2=A2, 3=A3.
 
         The library's update_zone checks zone.serranda != -1 to decide
-        whether to include shu_set in the command. Since we no longer
-        merge EV→serranda on zone objects (to avoid polluting regular
-        commands), we temporarily set zone.serranda so the damper
-        command is sent correctly, then restore it.
+        whether to include shu_set in the command.  For MiniDiscovery2X
+        zones, shu is always -1 (serranda is reported via EV/EV_set).
+        We temporarily set zone.serranda so the damper command includes
+        shu_set, then restore it immediately — while still holding the
+        lock — so a concurrent command cannot see the override.
         """
         zone = self._find_zone(zone_id)
         if not zone:
             _LOGGER.error("Zone %d not found for serranda update", zone_id)
             return
 
-        # Temporarily mark zone as having a serranda so the library
-        # includes shu_set/fan_set in the upd_zona command.
-        old_serranda = zone.serranda
-        zone.serranda = value
-        try:
-            await self._command(
-                self.client.set_zone_serranda(zone, value),
-                delay=2,  # serranda needs more time to settle
-            )
-        finally:
-            zone.serranda = old_serranda
+        # Send the command under the lock, restoring zone.serranda
+        # before releasing so no other command sees the override.
+        async with self._tcp_lock:
+            old_serranda = zone.serranda
+            zone.serranda = value
+            try:
+                await self.client.set_zone_serranda(zone, value)
+            finally:
+                zone.serranda = old_serranda
+
+        # Serranda needs more time to settle than other commands.
+        await asyncio.sleep(2)
+        await self.async_request_refresh()
 
         # Update local cache so UI reflects the change immediately
         if zone_id in self._zone_details:
