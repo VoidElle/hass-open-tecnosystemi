@@ -448,10 +448,12 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_polaris(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Choose Polaris setup method: manual or auto-scan."""
+        """Choose Polaris setup method: manual, auto-scan or cloud."""
         if user_input is not None:
             if user_input["method"] == "manual":
                 return await self.async_step_polaris_manual()
+            if user_input["method"] == "cloud":
+                return await self.async_step_polaris_cloud()
             return await self.async_step_polaris_scan()
 
         return self.async_show_form(
@@ -459,7 +461,7 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema({
                 vol.Required("method"): SelectSelector(
                     SelectSelectorConfig(
-                        options=["manual", "scan"],
+                        options=["manual", "scan", "cloud"],
                         translation_key="setup_method",
                         mode=SelectSelectorMode.LIST,
                     )
@@ -528,6 +530,168 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    # ─── Polaris: cloud ───────────────────────────────────────────────
+
+    async def async_step_polaris_cloud(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Cloud account login: list the Polaris CUs of the account."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            email = user_input["email"].strip()
+            password = user_input["password"]
+
+            devices: list[dict] = []
+            client = None
+            try:
+                from open_polaris_local_api.cloud import (  # noqa: PLC0415
+                    PolarisAuthError,
+                    PolarisCloudClient,
+                )
+                client = PolarisCloudClient(email, password, timeout=15)
+                await asyncio.wait_for(client.connect(), timeout=30)
+                # get_devices returns Polaris CUs only (LVDV_Type 0)
+                devices = await asyncio.wait_for(client.get_devices(), timeout=30)
+            except PolarisAuthError:
+                errors["base"] = "invalid_auth"
+            except asyncio.TimeoutError:
+                errors["base"] = "timeout"
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("Polaris cloud login failed: %s", err)
+                errors["base"] = "cannot_connect"
+            finally:
+                if client is not None:
+                    await client.disconnect()
+
+            if not errors:
+                used = {
+                    str(e.data.get("serial", "")).upper()
+                    for e in self._async_current_entries()
+                }
+                self._cloud_devices = [
+                    d for d in devices if str(d["Serial"]).upper() not in used
+                ]
+                if not self._cloud_devices:
+                    errors["base"] = "no_cloud_devices"
+                else:
+                    self._cloud_email = email
+                    self._cloud_password = password
+                    return await self.async_step_polaris_cloud_device()
+
+        return self.async_show_form(
+            step_id="polaris_cloud",
+            data_schema=vol.Schema({
+                vol.Required("email"): TextSelector(
+                    TextSelectorConfig(type=TextSelectorType.EMAIL)
+                ),
+                vol.Required("password"): TextSelector(
+                    TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                ),
+            }),
+            errors=errors,
+        )
+
+    async def async_step_polaris_cloud_device(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Pick the cloud Polaris CU and enter its PIN and name."""
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            serial = user_input["serial"].strip().upper()
+            pin = user_input["pin"].strip()
+            name = user_input["name"].strip()
+            name_slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+            android_id = uuid.uuid4().hex[:16]
+            scan_interval = int(user_input.get("scan_interval", CLOUD_SCAN_INTERVAL))
+            command_delay = int(user_input.get("command_delay", CLOUD_COMMAND_DELAY))
+
+            await self.async_set_unique_id(f"polaris_{name_slug}")
+            self._abort_if_unique_id_configured()
+
+            client = None
+            try:
+                from open_polaris_local_api import PolarisApiError  # noqa: PLC0415
+                from open_polaris_local_api.cloud import (  # noqa: PLC0415
+                    PolarisAuthError,
+                    PolarisCloudClient,
+                )
+                client = PolarisCloudClient(
+                    self._cloud_email,
+                    self._cloud_password,
+                    serial=serial,
+                    pin=pin,
+                    name=name,
+                    android_id=android_id,
+                )
+                # connect() logs in and reads GetCUState: a wrong PIN fails here
+                await asyncio.wait_for(client.connect(), timeout=30)
+            except PolarisAuthError:
+                errors["base"] = "invalid_auth"
+            except PolarisApiError as err:
+                _LOGGER.debug("Polaris cloud validation failed for %s: %s", serial, err)
+                errors["base"] = (
+                    "invalid_pin" if "Wrong PIN" in str(err) else "cannot_connect"
+                )
+            except asyncio.TimeoutError:
+                errors["base"] = "timeout"
+            except Exception as err:  # noqa: BLE001
+                _LOGGER.debug("Polaris cloud validation failed for %s: %s", serial, err)
+                errors["base"] = "cannot_connect"
+            finally:
+                if client is not None:
+                    await client.disconnect()
+
+            if not errors:
+                return self.async_create_entry(
+                    title=name,
+                    data={
+                        "device_type": "polaris",
+                        "connection": "cloud",
+                        "email": self._cloud_email,
+                        "password": self._cloud_password,
+                        "serial": serial,
+                        "pin": pin,
+                        "name": name,
+                        "android_id": android_id,
+                        "scan_interval": scan_interval,
+                        "command_delay": command_delay,
+                        "verbose": True,
+                    },
+                )
+
+        return self.async_show_form(
+            step_id="polaris_cloud_device",
+            data_schema=vol.Schema({
+                vol.Required("serial"): SelectSelector(
+                    SelectSelectorConfig(
+                        options=[
+                            {
+                                "value": d["Serial"],
+                                "label": f'{d["Name"]} ({d["PlantName"]})',
+                            }
+                            for d in self._cloud_devices
+                        ],
+                        mode=SelectSelectorMode.LIST,
+                    )
+                ),
+                vol.Required("pin"): TextSelector(
+                    TextSelectorConfig(type=TextSelectorType.PASSWORD)
+                ),
+                vol.Required("name"): TextSelector(
+                    TextSelectorConfig(type=TextSelectorType.TEXT)
+                ),
+                vol.Optional("scan_interval", default=CLOUD_SCAN_INTERVAL): NumberSelector(
+                    NumberSelectorConfig(min=10, max=300, step=5, mode=NumberSelectorMode.BOX)
+                ),
+                vol.Optional("command_delay", default=CLOUD_COMMAND_DELAY): NumberSelector(
+                    NumberSelectorConfig(min=0, max=30, step=1, mode=NumberSelectorMode.BOX)
+                ),
+            }),
+            errors=errors,
+        )
+
     # ─── Polaris: auto-scan ───────────────────────────────────────────
 
     async def async_step_polaris_scan(
@@ -554,7 +718,7 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
 
             if not errors:
                 configured = {
-                    e.data["ip"]
+                    e.data.get("ip")  # cloud entries have no ip
                     for e in self._async_current_entries()
                     if e.data.get("device_type") == "polaris"
                 }

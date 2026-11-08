@@ -4,6 +4,9 @@ Supports two device families:
   - Pico: Ventilation/air quality units (local UDP, ports 40069/40070)
   - Polaris 5: HVAC zone controllers (local TCP, port 1235)
 
+Both families can fall back to the Tecnosystemi cloud when the device is not
+reachable on the local network (entry data "connection": "cloud").
+
 Devices are added via the UI (Settings -> Integrations -> Add Integration).
 """
 from __future__ import annotations
@@ -18,7 +21,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryError, ConfigEntryNotReady
 
 from open_pico_local_api.cloud import PicoAuthError, PicoCloudClient
-from open_polaris_local_api import PolarisLocalClient
+from open_polaris_local_api import PolarisApiError, PolarisLocalClient
+from open_polaris_local_api.cloud import PolarisAuthError, PolarisCloudClient
 
 from .const import CLOUD_COMMAND_DELAY, CLOUD_SCAN_INTERVAL, DOMAIN
 from .coordinator import MainCoordinator
@@ -147,25 +151,50 @@ async def _setup_pico_entry(hass: HomeAssistant, entry: ConfigEntry) -> MainCoor
 
 async def _setup_polaris_entry(hass: HomeAssistant, entry: ConfigEntry) -> PolarisCoordinator:
     """Set up one Polaris device from a config entry."""
-    ip: str = entry.data["ip"]
     pin: str = entry.data["pin"]
     name: str = entry.data["name"]
-    scan_interval: int = entry.data.get("scan_interval", 30)
     verbose: bool = entry.data.get("verbose", False)
     name_slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
-    device_id = f"polaris_{name_slug}"
-    client = PolarisLocalClient(
-        ip=ip, pin=pin, device_id=device_id,
-        port=1235, timeout=15, retry_attempts=3, retry_delay=2.0, verbose=verbose,
-    )
+    if entry.data.get("connection", "local") == "cloud":
+        ip = serial = entry.data["serial"]  # "ip" only labels the log/error messages below
+        client = PolarisCloudClient(
+            email=entry.data["email"], password=entry.data["password"],
+            serial=serial, pin=pin, name=name, android_id=entry.data["android_id"],
+            timeout=15, retry_attempts=2, retry_delay=2.0, verbose=verbose,
+        )
+        try:
+            await asyncio.wait_for(client.connect(), timeout=30)
+        except PolarisAuthError as err:
+            raise ConfigEntryError(f"Invalid cloud credentials for Polaris {serial}: {err}") from err
+        except PolarisApiError as err:
+            if "Wrong PIN" in str(err):  # retrying cannot fix a wrong PIN
+                raise ConfigEntryError(f"Wrong PIN for Polaris {serial}") from err
+            raise ConfigEntryNotReady(f"Cannot connect to Polaris {serial}: {err}") from err
+        except Exception as err:
+            raise ConfigEntryNotReady(f"Cannot connect to Polaris {serial}: {err}") from err
 
-    try:
-        await asyncio.wait_for(client.connect(), timeout=30)
-    except Exception as err:
-        raise ConfigEntryNotReady(f"Cannot connect to Polaris {ip}: {err}") from err
+        coordinator = PolarisCoordinator(
+            hass, client, name,
+            scan_interval=entry.data.get("scan_interval", CLOUD_SCAN_INTERVAL),
+            command_delay=entry.data.get("command_delay", CLOUD_COMMAND_DELAY),
+            cloud=True,
+        )
+    else:
+        ip: str = entry.data["ip"]
+        client = PolarisLocalClient(
+            ip=ip, pin=pin, device_id=f"polaris_{name_slug}",
+            port=1235, timeout=15, retry_attempts=3, retry_delay=2.0, verbose=verbose,
+        )
 
-    coordinator = PolarisCoordinator(hass, client, name, scan_interval=scan_interval)
+        try:
+            await asyncio.wait_for(client.connect(), timeout=30)
+        except Exception as err:
+            raise ConfigEntryNotReady(f"Cannot connect to Polaris {ip}: {err}") from err
+
+        coordinator = PolarisCoordinator(
+            hass, client, name, scan_interval=entry.data.get("scan_interval", 30),
+        )
 
     try:
         async with asyncio.timeout(30):

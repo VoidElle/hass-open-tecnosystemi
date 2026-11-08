@@ -1,4 +1,4 @@
 pytest-homeassistant-custom-component
 pytest-asyncio
-open-pico-local-api==2.6.3
-open-polaris-local-api==1.2.5
+open-pico-local-api==2.7.0
+open-polaris-local-api==2.0.0

@@ -1,4 +1,4 @@
-"""DataUpdateCoordinator for Polaris 5X devices (local TCP port 1235)."""
+"""DataUpdateCoordinator for Polaris 5X devices (local TCP port 1235, or the vendor cloud as fallback)."""
 from __future__ import annotations
 
 import asyncio
@@ -62,9 +62,18 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
         client: PolarisLocalClient,
         device_name: str,
         scan_interval: int = POLARIS_SCAN_INTERVAL,
+        command_delay: float = _CMD_SETTLE_DELAY,
+        cloud: bool = False,
     ) -> None:
-        """Initialize."""
+        """Initialize.
+
+        cloud=True: client is a PolarisCloudClient. Zone details come from the
+        GetCUState zones (no stato_zona calls) and command_delay is longer
+        because the backend applies commands asynchronously.
+        """
         self.client = client
+        self._cloud = cloud
+        self._command_delay = command_delay
         self.device_name = device_name
         self.polaris_ip = client.ip
         self._zone_details: dict[int, dict] = {}
@@ -90,6 +99,8 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
         """Return device serial (from last status, or IP-based fallback)."""
         if self.client.device and self.client.device.serial:
             return self.client.device.serial
+        if self._cloud:
+            return self.client.serial
         return self.client.ip.replace(".", "_")
 
     # ─── Zone detail fetching (incremental + refresh) ───────────────
@@ -188,7 +199,18 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
                 # Skip on the first refresh (self.data is None) because it
                 # runs inside the 30s setup timeout in __init__.py; a single
                 # slow zone could fail the whole setup.
-                if zones and self.data is not None:
+                if self._cloud:
+                    # stato_zona is local-only, but GetCUState zones already carry
+                    # its serranda/fancoil fields: rebuild the cache from them.
+                    # The cloud has no EV_set, so MiniDiscovery2X zones get no swing.
+                    self._zone_details = {
+                        z.zone_id: {
+                            "shu": z.serranda, "shu_set": z.serranda_set,
+                            "fan": z.fancoil, "fan_set": z.fancoil_set, "EV": z.ev,
+                        }
+                        for z in zones
+                    }
+                elif zones and self.data is not None:
                     await self._async_fetch_zone_details_incremental(zones)
 
             self._poll_count += 1
@@ -281,7 +303,7 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
     async def _command(
         self,
         coro: Coroutine[Any, Any, Any],
-        delay: float = _CMD_SETTLE_DELAY,
+        delay: float | None = None,
     ) -> None:
         """Send a command under the TCP lock, wait, then refresh.
 
@@ -293,7 +315,7 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
         """
         async with self._tcp_lock:
             await coro
-        await asyncio.sleep(delay)
+        await asyncio.sleep(self._command_delay if delay is None else delay)
         await self.async_request_refresh()
 
     # ─── Control methods: device-level ───────────────────────────────
@@ -400,7 +422,7 @@ class PolarisCoordinator(DataUpdateCoordinator[PolarisData]):
             self.async_update_listeners()
 
         # Serranda needs more time to settle than other commands.
-        await asyncio.sleep(2)
+        await asyncio.sleep(max(2, self._command_delay))
         await self.async_request_refresh()
 
     async def async_shutdown(self) -> None:

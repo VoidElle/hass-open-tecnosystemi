@@ -311,3 +311,53 @@ class TestPolarisSetZoneSerranda:
         await detail_coordinator.async_set_zone_serranda(1, 3)
         detail_coordinator.async_update_listeners.assert_not_called()
         assert 1 not in detail_coordinator.zone_details
+
+
+@pytest.fixture
+def cloud_coordinator(mock_hass, mock_polaris_client, monkeypatch):
+    """Real coordinator in cloud mode, sleeps recorded instead of awaited."""
+    import custom_components.open_pico.polaris_coordinator as mod
+
+    sleep = AsyncMock()
+    monkeypatch.setattr(mod.asyncio, "sleep", sleep)
+    mock_polaris_client.serial = "CU1"
+    mock_polaris_client.get_zone_detail = AsyncMock()
+    mock_polaris_client.set_zone_serranda = AsyncMock()
+    coord = PolarisCoordinator(mock_hass, mock_polaris_client, "Cloud Polaris",
+                               scan_interval=30, command_delay=3, cloud=True)
+    coord.data = PolarisData(device=make_polaris_device(), zones=_zones(1))
+    coord.async_request_refresh = AsyncMock()
+    coord.sleep = sleep
+    return coord
+
+
+class TestPolarisCloudCoordinator:
+    async def test_zone_details_built_from_cloud_zones(self, cloud_coordinator, mock_polaris_client):
+        zones = [make_polaris_zone(zone_id=1, serranda=1, serranda_set=2, fancoil=-1, fancoil_set=-1, ev=0)]
+        mock_polaris_client.async_update = AsyncMock(return_value=(make_polaris_device(), zones))
+
+        await cloud_coordinator._async_update_data()
+
+        mock_polaris_client.get_zone_detail.assert_not_called()  # stato_zona is local-only
+        assert cloud_coordinator.zone_details[1] == {"shu": 1, "shu_set": 2, "fan": -1, "fan_set": -1, "EV": 0}
+
+    async def test_command_waits_command_delay(self, cloud_coordinator, mock_polaris_client):
+        await cloud_coordinator.async_turn_on()
+        mock_polaris_client.turn_on.assert_called_once()
+        cloud_coordinator.sleep.assert_awaited_once_with(3)
+        cloud_coordinator.async_request_refresh.assert_awaited_once()
+
+    async def test_serranda_waits_at_least_command_delay(self, cloud_coordinator):
+        cloud_coordinator._command_delay = 5
+        await cloud_coordinator.async_set_zone_serranda(1, 2)
+        cloud_coordinator.sleep.assert_awaited_once_with(5)
+
+    def test_serial_fallback_uses_cloud_serial(self, cloud_coordinator, mock_polaris_client):
+        mock_polaris_client.device = None
+        assert cloud_coordinator.serial == "CU1"
+
+    async def test_local_command_keeps_default_delay(self, detail_coordinator, mock_polaris_client):
+        import custom_components.open_pico.polaris_coordinator as mod
+
+        await detail_coordinator.async_turn_on()
+        mod.asyncio.sleep.assert_awaited_once_with(1.0)

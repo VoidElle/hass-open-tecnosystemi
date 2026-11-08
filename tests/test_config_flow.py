@@ -482,3 +482,127 @@ class TestStepPicoCloudDevice:
         assert flow.async_show_form.call_args[1]["errors"]["base"] == "cannot_connect"
         flow.async_create_entry.assert_not_called()
         client.disconnect.assert_awaited_once()
+
+
+# ─── Polaris: cloud ──────────────────────────────────────────────────────────
+
+class TestStepPolarisRouting:
+    async def test_routes_to_cloud(self):
+        flow = _make_flow()
+        flow.async_step_polaris_cloud = AsyncMock(return_value={"type": "form"})
+        await flow.async_step_polaris({"method": "cloud"})
+        flow.async_step_polaris_cloud.assert_called_once()
+
+    async def test_cloud_entry_without_ip_does_not_break_scan(self):
+        flow = _make_flow()
+        cloud_entry = MagicMock()
+        cloud_entry.data = {"device_type": "polaris", "connection": "cloud", "serial": "CU1"}
+        flow._async_current_entries = MagicMock(return_value=[cloud_entry])
+        flow.async_step_polaris_scan_results = AsyncMock(return_value={"type": "form"})
+        with patch("open_polaris_local_api.PolarisAutoDiscovery") as MockDiscovery:
+            MockDiscovery.discover = AsyncMock(return_value=["192.168.1.60"])
+            await flow.async_step_polaris_scan({"pin": "5678", "subnet": "192.168.1.0/24"})
+        flow.async_step_polaris_scan_results.assert_called_once()
+
+
+def _cu(serial):
+    # PolarisCloudClient.get_devices already returns Polaris CUs only
+    return {"Serial": serial, "Name": "Casa", "LVDV_Type": 0, "PlantName": "Home"}
+
+
+class TestStepPolarisCloud:
+    async def test_shows_form_when_no_input(self):
+        flow = _make_flow()
+        await flow.async_step_polaris_cloud(None)
+        assert flow.async_show_form.call_args[1]["step_id"] == "polaris_cloud"
+
+    async def test_invalid_auth(self):
+        from open_polaris_local_api.cloud import PolarisAuthError
+
+        flow = _make_flow()
+        client = _cloud_client(connect_exc=PolarisAuthError("bad"))
+        with patch("open_polaris_local_api.cloud.PolarisCloudClient", return_value=client):
+            await flow.async_step_polaris_cloud({"email": "a@b.c", "password": "x"})
+        assert flow.async_show_form.call_args[1]["errors"]["base"] == "invalid_auth"
+        client.disconnect.assert_awaited_once()
+
+    async def test_timeout(self):
+        flow = _make_flow()
+        client = _cloud_client(connect_exc=asyncio.TimeoutError())
+        with patch("open_polaris_local_api.cloud.PolarisCloudClient", return_value=client):
+            await flow.async_step_polaris_cloud({"email": "a@b.c", "password": "x"})
+        assert flow.async_show_form.call_args[1]["errors"]["base"] == "timeout"
+
+    async def test_no_devices_when_all_configured(self):
+        flow = _make_flow()
+        flow._async_current_entries = MagicMock(return_value=[MagicMock(data={"serial": "CU1"})])
+        client = _cloud_client(devices=[_cu("cu1")])
+        with patch("open_polaris_local_api.cloud.PolarisCloudClient", return_value=client):
+            await flow.async_step_polaris_cloud({"email": "a@b.c", "password": "x"})
+        assert flow.async_show_form.call_args[1]["errors"]["base"] == "no_cloud_devices"
+
+    async def test_success_filters_and_goes_to_device_step(self):
+        flow = _make_flow()
+        flow._async_current_entries = MagicMock(return_value=[MagicMock(data={"serial": "CU1"})])
+        flow.async_step_polaris_cloud_device = AsyncMock(return_value={"type": "form"})
+        client = _cloud_client(devices=[_cu("CU1"), _cu("CU2")])
+        with patch("open_polaris_local_api.cloud.PolarisCloudClient", return_value=client):
+            await flow.async_step_polaris_cloud({"email": "a@b.c", "password": "x"})
+        flow.async_step_polaris_cloud_device.assert_called_once()
+        assert [d["Serial"] for d in flow._cloud_devices] == ["CU2"]
+        assert flow._cloud_email == "a@b.c"
+        client.disconnect.assert_awaited_once()
+
+
+class TestStepPolarisCloudDevice:
+    INPUT = {"serial": "cu2", "pin": "1234", "name": "Casa"}
+
+    async def test_success_creates_cloud_entry(self):
+        flow = _make_flow()
+        flow._cloud_email, flow._cloud_password = "a@b.c", "x"
+        client = _cloud_client()
+        with patch("open_polaris_local_api.cloud.PolarisCloudClient", return_value=client) as cls:
+            await flow.async_step_polaris_cloud_device(self.INPUT)
+        data = flow.async_create_entry.call_args[1]["data"]
+        assert (data["device_type"], data["connection"], data["serial"]) == ("polaris", "cloud", "CU2")
+        assert len(data["android_id"]) == 16
+        assert cls.call_args.kwargs["android_id"] == data["android_id"]
+        assert (data["scan_interval"], data["command_delay"]) == (30, 3)
+        flow.async_set_unique_id.assert_awaited_once_with("polaris_casa")
+        client.disconnect.assert_awaited_once()
+
+    async def test_custom_intervals_stored(self):
+        flow = _make_flow()
+        flow._cloud_email, flow._cloud_password = "a@b.c", "x"
+        with patch("open_polaris_local_api.cloud.PolarisCloudClient", return_value=_cloud_client()):
+            await flow.async_step_polaris_cloud_device({**self.INPUT, "scan_interval": 60.0, "command_delay": 6.0})
+        data = flow.async_create_entry.call_args[1]["data"]
+        assert (data["scan_interval"], data["command_delay"]) == (60, 6)
+
+    async def test_invalid_pin(self):
+        from open_polaris_local_api import PolarisApiError
+
+        flow = _make_flow()
+        client = _cloud_client(connect_exc=PolarisApiError("Wrong PIN"))
+        with patch("open_polaris_local_api.cloud.PolarisCloudClient", return_value=client):
+            await flow.async_step_polaris_cloud_device(self.INPUT)
+        assert flow.async_show_form.call_args[1]["errors"]["base"] == "invalid_pin"
+        client.disconnect.assert_awaited_once()
+
+    async def test_invalid_auth(self):
+        from open_polaris_local_api.cloud import PolarisAuthError
+
+        flow = _make_flow()
+        client = _cloud_client(connect_exc=PolarisAuthError("expired"))
+        with patch("open_polaris_local_api.cloud.PolarisCloudClient", return_value=client):
+            await flow.async_step_polaris_cloud_device(self.INPUT)
+        assert flow.async_show_form.call_args[1]["errors"]["base"] == "invalid_auth"
+
+    async def test_cannot_connect(self):
+        flow = _make_flow()
+        client = _cloud_client(connect_exc=OSError("down"))
+        with patch("open_polaris_local_api.cloud.PolarisCloudClient", return_value=client):
+            await flow.async_step_polaris_cloud_device(self.INPUT)
+        assert flow.async_show_form.call_args[1]["errors"]["base"] == "cannot_connect"
+        flow.async_create_entry.assert_not_called()
+        client.disconnect.assert_awaited_once()

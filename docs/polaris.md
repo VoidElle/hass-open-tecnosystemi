@@ -1,6 +1,6 @@
 # Polaris 5X
 
-Tecnosystemi Polaris 5X HVAC zone controllers (CU), controlled over your local network (TCP).
+Tecnosystemi Polaris 5X HVAC zone controllers (CU), controlled over your local network (TCP), with an optional cloud fallback.
 
 ## Network Requirements
 
@@ -26,6 +26,17 @@ Keep the scan interval at 30 s or more: the CU has a limited network stack, and 
 2. The integration probes TCP port 1235 on every host, sending the PIN, and lists the Polaris CUs that answer.
 3. Already-configured devices are left out.
 4. Pick a device, give it a name and a scan interval.
+
+### Cloud
+Use it only when the CU is not reachable on your local network.
+1. Enter your Tecnosystemi account email and password.
+2. Pick the CU, then enter its PIN and a name.
+
+The state is polled every 30 s by default (10-300 s). After a command the integration waits 3 s by default (0-30 s) before refreshing. The vendor backend queues commands: a CU with firmware older than 4.x can take up to 10 minutes to apply them. Raise the delay if the state flips back after a command. The account email and password are stored in the config entry.
+
+Damper (swing) control works in cloud mode only on zones that report the damper through `shu` (Stealth2X). MiniDiscovery2X zones get no swing mode, because the cloud does not send their damper setpoint.
+
+The Tecnosystemi backend allows one session per account at a time: while the integration is running, the official app shows an alert and stops working.
 
 ---
 
@@ -97,3 +108,4 @@ All entities of a CU are grouped under one device: manufacturer Tecnosystemi, mo
 ## Connection Problems
 - If the CU stops answering, its entities become unavailable until the next successful poll.
 - If the CU cannot be reached when Home Assistant starts, the entry is retried automatically.
+- Cloud: wrong email, password or PIN stops the entry with an error. To fix it, delete the entry and add the device again (re-adding it without deleting aborts with "already configured").

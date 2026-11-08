@@ -138,4 +138,4 @@ Local: every **5 seconds**. Cloud: every **30 seconds** by default, set at setup
 ## Connection Problems
 - If the Pico stops answering, the integration reconnects by itself on the next poll and the entities become unavailable until it answers again.
 - If the Pico cannot be reached when Home Assistant starts, the entry is retried automatically.
-- Cloud: wrong email or password stops the entry with an error; fix the credentials by adding the device again.
+- Cloud: wrong email or password stops the entry with an error. To fix it, delete the entry and add the device again (re-adding it without deleting aborts with "already configured").

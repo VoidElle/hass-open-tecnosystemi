@@ -50,6 +50,25 @@
           "method": "Setup Method"
         }
       },
+      "polaris_cloud": {
+        "title": "Polaris - Cloud Account",
+        "description": "Use the cloud only when the control unit is not reachable on the local network. Enter your Tecnosystemi account credentials.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "polaris_cloud_device": {
+        "title": "Select Polaris Control Unit",
+        "description": "Commands sent through the cloud are queued: the control unit can take up to 10 minutes to apply them on firmware older than 4.x.",
+        "data": {
+          "serial": "Control Unit",
+          "pin": "PIN",
+          "name": "Device Name",
+          "scan_interval": "Polling Interval (seconds)",
+          "command_delay": "Command Refresh Delay (seconds)"
+        }
+      },
       "polaris_manual": {
         "title": "Add Polaris Device Manually",
         "data": {
@@ -106,7 +125,7 @@
       "timeout": "The device did not respond in time. Check that it is powered on and reachable on the network.",
       "discovery_failed": "Auto-discovery scan failed. Check your network settings.",
       "no_devices_found": "No new devices found on the network. All discovered devices may already be configured.",
-      "no_cloud_devices": "No Pico devices found in this Tecnosystemi account that are not already configured.",
+      "no_cloud_devices": "No devices of this type found in this Tecnosystemi account that are not already configured.",
       "invalid_auth": "Invalid email or password.",
       "invalid_pin": "Wrong PIN."
     },

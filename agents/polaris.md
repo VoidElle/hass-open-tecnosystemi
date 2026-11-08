@@ -1,19 +1,19 @@
 ---
 name: polaris
-description: Expert agent for the Polaris HVAC integration. Use when working on Polaris TCP protocol, PolarisCoordinator, PolarisLocalClient, climate entities, or anything in the open-polaris-local-api package or polaris_coordinator.py.
+description: Expert agent for the Polaris HVAC integration. Use when working on Polaris TCP protocol, the cloud fallback (PolarisCloudClient), PolarisCoordinator, PolarisLocalClient, climate entities, or anything in the open-polaris-local-api package or polaris_coordinator.py.
 ---
 
 # Polaris Integration — Agent Memory
 
-Integration lives in `custom_components/open_pico/`. The TCP client and models come from the `open-polaris-local-api` package (pinned in `manifest.json`), not from this repo.
+Integration lives in `custom_components/open_pico/`. The TCP client and models come from the `open-polaris-local-api` package (pinned in `manifest.json`), not from this repo. Optional **cloud fallback** (HTTPS, vendor backend) for CUs not reachable on the LAN; see [Cloud fallback](#cloud-fallback-polariscloudclient).
 
 ---
 
 ## Configuration (UI only)
 
-No YAML. Each Polaris CU is one config entry from **Add Integration -> Open Tecnosystemi -> Polaris** (`config_flow.py`): `polaris` -> `polaris_manual` | `polaris_scan` -> `polaris_scan_results` -> `polaris_scan_confirm`.
+No YAML. Each Polaris CU is one config entry from **Add Integration -> Open Tecnosystemi -> Polaris** (`config_flow.py`): `polaris` (manual / scan / cloud) -> `polaris_manual` | `polaris_scan` -> `polaris_scan_results` -> `polaris_scan_confirm` | `polaris_cloud` -> `polaris_cloud_device`.
 
-Entry data: `device_type: "polaris"`, `ip`, `pin`, `name`, `scan_interval` (NumberSelector 10-300 s, step 5, default 30), `verbose`.
+Local entry data: `device_type: "polaris"`, `ip`, `pin`, `name`, `scan_interval` (NumberSelector 10-300 s, step 5, default 30), `verbose`. Cloud entry data: see [Cloud fallback](#cloud-fallback-polariscloudclient).
 
 Config entry unique ID: `polaris_<name_slug>` (`_abort_if_unique_id_configured` prevents duplicates). Every step that creates an entry validates connectivity first (`PolarisLocalClient(timeout=10).connect()` within 15 s).
 
@@ -35,13 +35,42 @@ Config entry unique ID: `polaris_<name_slug>` (`_abort_if_unique_id_configured` 
 
 ## Setup Flow (`__init__.py -> async_setup_entry -> _setup_polaris_entry`)
 
-1. Create `PolarisLocalClient(ip, pin, device_id=f"polaris_{name_slug}", port=1235, timeout=15, retry_attempts=3, retry_delay=2.0, verbose)`
+1. Cloud branch (`entry.data["connection"] == "cloud"`): see [Cloud fallback](#cloud-fallback-polariscloudclient). Local: create `PolarisLocalClient(ip, pin, device_id=f"polaris_{name_slug}", port=1235, timeout=15, retry_attempts=3, retry_delay=2.0, verbose)`
 2. `client.connect()` (30 s) -> failure `ConfigEntryNotReady`
 3. Create `PolarisCoordinator(hass, client, name, scan_interval=scan_interval)`
 4. `coordinator.async_refresh()` (30 s); failure -> `client.close()` + `ConfigEntryNotReady`
 5. Store in `hass.data[DOMAIN][entry.entry_id] = {"coordinator": ..., "device_type": "polaris"}`
 6. `async_forward_entry_setups(entry, POLARIS_PLATFORMS)`, `POLARIS_PLATFORMS = [Platform.CLIMATE, Platform.SENSOR, Platform.BINARY_SENSOR]`
 7. Unload (`async_unload_entry`): unload platforms, then `coordinator.async_shutdown()` -> `client.close()`
+
+---
+
+## Cloud fallback (`PolarisCloudClient`)
+
+Used only for entries with `entry.data["connection"] == "cloud"` (entries without the key are local). Never make it automatic: local TCP stays the primary path.
+
+### Entry data
+`device_type: "polaris"`, `connection: "cloud"`, `name`, `pin`, `email`, `password`, `serial` (upper-case), `android_id` (16 hex, generated once per entry), `scan_interval`, `command_delay`, `verbose`. Read both intervals with `.get()` + default.
+
+### Config flow (`config_flow.py`)
+`polaris` step `setup_method == "cloud"` -> `async_step_polaris_cloud` (email/password, login + `get_devices()`, which already returns Polaris CUs only; keeps serials not yet configured) -> `async_step_polaris_cloud_device` (serial select, PIN, name; generates `android_id`, validates with a fresh client `connect()`, which logs in and reads `GetCUState`; `PolarisAuthError` -> `invalid_auth`, `PolarisApiError("Wrong PIN")` -> `invalid_pin`). Client is always disconnected after validation. Unique ID `polaris_<name_slug>`, like local entries.
+
+### Setup (`__init__.py -> _setup_polaris_entry`)
+- `PolarisCloudClient(email, password, serial, pin, name, android_id, timeout=15, retry_attempts=2, retry_delay=2.0, verbose)`. `android_id` is the AES key seed sent at login, not an HA id
+- `connect()` (30 s): `PolarisAuthError` -> `ConfigEntryError`, anything else -> `ConfigEntryNotReady`
+- `PolarisCoordinator(..., scan_interval=entry.data.get("scan_interval", CLOUD_SCAN_INTERVAL), command_delay=entry.data.get("command_delay", CLOUD_COMMAND_DELAY), cloud=True)`. Defaults 30 s / 3 s, set in the `polaris_cloud_device` step (10-300 s step 5, 0-30 s)
+- Unload: `coordinator.async_shutdown()` -> `client.close()` (closes the aiohttp session), same path as local
+
+### Coordinator in cloud mode (`cloud=True`)
+- No `stato_zona` (`get_zone_detail` raises `PolarisApiError` in cloud mode). Each poll rebuilds `zone_details` from the `GetCUState` zones: `{shu, shu_set, fan, fan_set, EV}` from `serranda`/`serranda_set`/`fancoil`/`fancoil_set`/`ev`. The cloud has no `EV_set`, so MiniDiscovery2X zones (shu `-1`) get no swing mode
+- `_command()` waits `command_delay` (local default `_CMD_SETTLE_DELAY` = 1 s); serranda waits `max(2, command_delay)`
+- `serial` falls back to `client.serial` instead of the IP (`client.ip == "cloud"`)
+- Commands are inherited from `PolarisLocalClient` and only queued by the backend (FW < 4.x: up to 10 min). `update_cu` raises `PolarisApiError` if no state is cached; the coordinator always polls before writing, so this does not happen in normal use
+
+### Debugging
+- Bad credentials -> `PolarisAuthError` (subclass of `PolarisApiError`, import from `open_polaris_local_api.cloud`). Wrong PIN -> `PolarisApiError("Wrong PIN")`. No reply from the backend -> `TimeoutError`
+- The backend allows one session per account: several cloud entries on the same account (Pico or Polaris), or the official app, may log each other out; the client re-logs in on 401
+- `verbose: true` logs HTTP requests/responses (login excluded); logs contain email and PIN, redact before sharing
 
 ---
 

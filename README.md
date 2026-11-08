@@ -23,7 +23,7 @@ Open Tecnosystemi is a Home Assistant integration that enables management of Tec
 - **Pico** - Local UDP-based ventilation and air quality units
 - **Polaris 5X** - Local TCP-based HVAC zone controllers
 
-Both device families communicate **over your local network**. Pico also has an optional cloud fallback for units Home Assistant cannot reach on the LAN.
+Both device families communicate **over your local network**. Both also have an optional cloud fallback for units Home Assistant cannot reach on the LAN.
 
 ## Installation 📦
 ### Via HACS (Recommended) ⭐
@@ -52,7 +52,7 @@ After installing (via HACS or manually) and restarting Home Assistant:
 3. Search for **"Open Tecnosystemi"**
 4. Select it from the list
 5. Choose the device family: **Pico** or **Polaris**
-6. Choose the setup method: **Manual**, **Scan** or, for Pico only, **Cloud**
+6. Choose the setup method: **Manual**, **Scan** or **Cloud**
 
 ## Configuration ⚙️
 
@@ -71,13 +71,13 @@ Already-configured devices are automatically excluded from scan results.
 
 ### Cloud fallback
 
-Use **Cloud** only when the Pico is not reachable on your local network.
+Use **Cloud** only when the Pico or the Polaris CU is not reachable on your local network.
 
 1. Select **Cloud** as the setup method
 2. Enter your Tecnosystemi account email and password
 3. Pick the device, then enter its PIN and a name
 
-Notes: state is polled every 30 seconds and the refresh after a command waits 3 seconds, because the vendor backend applies commands with a short delay. Both values can be changed in the device step (raise the command delay if the state flips back after a command). The account credentials are stored in the config entry. Polaris is not supported in cloud mode.
+Notes: state is polled every 30 seconds and the refresh after a command waits 3 seconds, because the vendor backend applies commands with a delay. Both values can be changed in the device step (raise the command delay if the state flips back after a command). The account credentials are stored in the config entry. Polaris CUs with firmware older than 4.x can take up to 10 minutes to apply a cloud command.
 
 The Tecnosystemi backend allows only one session per account at a time. While the integration is running, the official app shows an alert and stops working. To change something from the app, disable the integration first and enable it again afterwards.
 
@@ -105,6 +105,7 @@ CO2, eCO2 and TVOC read 0 on models without the air quality sensor. They also re
 - 📊 **Operating Mode**: Global CU operating mode sensor
 - 🌀 **Damper Control**: Per-zone damper (serranda) position via the zone climate swing mode
 - 🚨 **Error Sensors**: CU and per-zone error binary sensors
+- ☁️ **Cloud Fallback**: Optional, for CUs not reachable on the LAN
 
 ### General
 - 🔄 **Multi-Device Support**: Control multiple devices of both types simultaneously
@@ -112,8 +113,8 @@ CO2, eCO2 and TVOC read 0 on models without the air quality sensor. They also re
 - ⚡ **Concurrent Polling**: Efficient updates across all devices
 
 ## Limitations ⚠️
-- Polaris requires local network access (devices must be on the same network as Home Assistant)
-- Pico needs local network access unless set up with the cloud fallback, which depends on the Tecnosystemi backend
+- Pico and Polaris need local network access unless set up with the cloud fallback, which depends on the Tecnosystemi backend
+- Polaris in cloud mode: no damper (swing) control on MiniDiscovery2X zones, because the cloud does not report their damper setpoint
 
 ## Documentation 📖
 Per-device setup and entity reference: [Pico](docs/pico.md) · [Polaris 5X](docs/polaris.md) ([index](docs/index.md)).

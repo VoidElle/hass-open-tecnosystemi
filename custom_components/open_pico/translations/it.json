@@ -50,6 +50,25 @@
           "method": "Metodo di Configurazione"
         }
       },
+      "polaris_cloud": {
+        "title": "Polaris - Account Cloud",
+        "description": "Usa il cloud solo se la centralina non è raggiungibile nella rete locale. Inserisci le credenziali dell'account Tecnosystemi.",
+        "data": {
+          "email": "Email",
+          "password": "Password"
+        }
+      },
+      "polaris_cloud_device": {
+        "title": "Seleziona Centralina Polaris",
+        "description": "I comandi inviati tramite cloud vengono messi in coda: con firmware precedenti alla 4.x la centralina può impiegare fino a 10 minuti per applicarli.",
+        "data": {
+          "serial": "Centralina",
+          "pin": "PIN",
+          "name": "Nome Dispositivo",
+          "scan_interval": "Intervallo di Polling (secondi)",
+          "command_delay": "Attesa Aggiornamento dopo Comando (secondi)"
+        }
+      },
       "polaris_manual": {
         "title": "Aggiungi Dispositivo Polaris Manualmente",
         "data": {
@@ -106,7 +125,7 @@
       "timeout": "Il dispositivo non ha risposto in tempo. Verifica che sia acceso e raggiungibile in rete.",
       "discovery_failed": "Scansione auto-discovery fallita. Controlla le impostazioni di rete.",
       "no_devices_found": "Nessun nuovo dispositivo trovato in rete. Controlla la subnet inserita. I dispositivi scoperti potrebbero essere già configurati.",
-      "no_cloud_devices": "Nessun dispositivo Pico non ancora configurato trovato in questo account Tecnosystemi.",
+      "no_cloud_devices": "Nessun dispositivo di questo tipo non ancora configurato trovato in questo account Tecnosystemi.",
       "invalid_auth": "Email o password non valide.",
       "invalid_pin": "PIN errato."
     },

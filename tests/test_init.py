@@ -275,3 +275,106 @@ class TestAsyncUnloadEntry:
 
         await async_unload_entry(mock_hass, entry)
         mock_manager.shutdown.assert_called_once()
+
+
+def make_polaris_cloud_entry(entry_id: str = "pcloud1") -> MagicMock:
+    entry = make_entry("polaris", entry_id=entry_id, name="Cloud Polaris")
+    entry.data = {
+        "device_type": "polaris",
+        "connection": "cloud",
+        "email": "a@b.c",
+        "password": "pw",
+        "serial": "CU1",
+        "pin": "1234",
+        "name": "Cloud Polaris",
+        "android_id": "0123456789abcdef",
+        "verbose": True,
+    }
+    return entry
+
+
+class TestSetupPolarisEntry:
+    async def test_cloud_builds_cloud_client(self, mock_hass, mock_polaris_client):
+        from custom_components.open_pico import _setup_polaris_entry
+
+        coordinator = MagicMock(last_update_success=True, async_refresh=AsyncMock())
+        with (
+            patch("custom_components.open_pico.PolarisCloudClient", return_value=mock_polaris_client) as cloud_cls,
+            patch("custom_components.open_pico.PolarisLocalClient") as local_cls,
+            patch("custom_components.open_pico.PolarisCoordinator", return_value=coordinator) as coord_cls,
+        ):
+            result = await _setup_polaris_entry(mock_hass, make_polaris_cloud_entry())
+
+        assert result is coordinator
+        assert cloud_cls.call_args.kwargs["android_id"] == "0123456789abcdef"
+        assert cloud_cls.call_args.kwargs["serial"] == "CU1"
+        local_cls.assert_not_called()
+        assert coord_cls.call_args.kwargs == {"scan_interval": 30, "command_delay": 3, "cloud": True}
+
+    async def test_cloud_uses_entry_intervals(self, mock_hass, mock_polaris_client):
+        from custom_components.open_pico import _setup_polaris_entry
+
+        entry = make_polaris_cloud_entry()
+        entry.data = {**entry.data, "scan_interval": 60, "command_delay": 6}
+        coordinator = MagicMock(last_update_success=True, async_refresh=AsyncMock())
+        with (
+            patch("custom_components.open_pico.PolarisCloudClient", return_value=mock_polaris_client),
+            patch("custom_components.open_pico.PolarisCoordinator", return_value=coordinator) as coord_cls,
+        ):
+            await _setup_polaris_entry(mock_hass, entry)
+
+        assert coord_cls.call_args.kwargs == {"scan_interval": 60, "command_delay": 6, "cloud": True}
+
+    async def test_cloud_auth_error_raises_config_entry_error(self, mock_hass, mock_polaris_client):
+        from homeassistant.exceptions import ConfigEntryError
+        from open_polaris_local_api.cloud import PolarisAuthError
+        from custom_components.open_pico import _setup_polaris_entry
+
+        mock_polaris_client.connect.side_effect = PolarisAuthError("bad")
+        with patch("custom_components.open_pico.PolarisCloudClient", return_value=mock_polaris_client):
+            with pytest.raises(ConfigEntryError):
+                await _setup_polaris_entry(mock_hass, make_polaris_cloud_entry())
+
+    async def test_cloud_wrong_pin_raises_config_entry_error(self, mock_hass, mock_polaris_client):
+        from homeassistant.exceptions import ConfigEntryError
+        from open_polaris_local_api import PolarisApiError
+        from custom_components.open_pico import _setup_polaris_entry
+
+        mock_polaris_client.connect.side_effect = PolarisApiError("Wrong PIN")
+        with patch("custom_components.open_pico.PolarisCloudClient", return_value=mock_polaris_client):
+            with pytest.raises(ConfigEntryError):
+                await _setup_polaris_entry(mock_hass, make_polaris_cloud_entry())
+
+    async def test_cloud_api_error_raises_not_ready(self, mock_hass, mock_polaris_client):
+        from homeassistant.exceptions import ConfigEntryNotReady
+        from open_polaris_local_api import PolarisApiError
+        from custom_components.open_pico import _setup_polaris_entry
+
+        mock_polaris_client.connect.side_effect = PolarisApiError("Cloud rejected (ResCode 5)")
+        with patch("custom_components.open_pico.PolarisCloudClient", return_value=mock_polaris_client):
+            with pytest.raises(ConfigEntryNotReady):
+                await _setup_polaris_entry(mock_hass, make_polaris_cloud_entry())
+
+    async def test_cloud_connect_failure_raises_not_ready(self, mock_hass, mock_polaris_client):
+        from homeassistant.exceptions import ConfigEntryNotReady
+        from custom_components.open_pico import _setup_polaris_entry
+
+        mock_polaris_client.connect.side_effect = OSError("down")
+        with patch("custom_components.open_pico.PolarisCloudClient", return_value=mock_polaris_client):
+            with pytest.raises(ConfigEntryNotReady):
+                await _setup_polaris_entry(mock_hass, make_polaris_cloud_entry())
+
+    async def test_entry_without_connection_key_uses_local_client(self, mock_hass, mock_polaris_client):
+        from custom_components.open_pico import _setup_polaris_entry
+
+        coordinator = MagicMock(last_update_success=True, async_refresh=AsyncMock())
+        with (
+            patch("custom_components.open_pico.PolarisLocalClient", return_value=mock_polaris_client) as local_cls,
+            patch("custom_components.open_pico.PolarisCloudClient") as cloud_cls,
+            patch("custom_components.open_pico.PolarisCoordinator", return_value=coordinator) as coord_cls,
+        ):
+            await _setup_polaris_entry(mock_hass, make_entry("polaris"))
+
+        cloud_cls.assert_not_called()
+        assert local_cls.call_args.kwargs["ip"] == "192.168.1.50"
+        assert coord_cls.call_args.kwargs == {"scan_interval": 30}

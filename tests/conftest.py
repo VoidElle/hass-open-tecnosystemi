@@ -108,6 +108,19 @@ polaris_api_mod = _make_stub(
 )
 sys.modules.setdefault("open_polaris_local_api", polaris_api_mod)
 
+class _PolarisAuthError(_PolarisApiError):
+    pass
+
+class _PolarisCloudClient:
+    pass
+
+polaris_cloud_mod = _make_stub(
+    "open_polaris_local_api.cloud",
+    PolarisAuthError=_PolarisAuthError,
+    PolarisCloudClient=_PolarisCloudClient,
+)
+sys.modules.setdefault("open_polaris_local_api.cloud", polaris_cloud_mod)
+
 # ---------------------------------------------------------------------------
 # Patch HA's frame helper so coordinators can be instantiated in tests
 # without a running HA event loop / frame setup.
