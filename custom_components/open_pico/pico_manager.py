@@ -107,6 +107,15 @@ class PicoClientManager:
 
         return client
 
+    async def remove_client(self, device_id: str) -> None:
+        """Disconnect and forget one client, so a reload builds it again with fresh IP/PIN."""
+        client = self._clients.pop(device_id, None)
+        if client is not None and client.connected:
+            try:
+                await client.disconnect()
+            except Exception as e:
+                _LOGGER.error("Error disconnecting client '%s': %s", device_id, e)
+
     async def shutdown(self):
         """Shutdown all clients and the shared transport."""
         _LOGGER.info("Shutting down PicoClientManager...")

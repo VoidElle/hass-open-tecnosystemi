@@ -680,11 +680,20 @@ class TestReconfigure:
         keys = {str(k) for k in flow.async_show_form.call_args.kwargs["data_schema"].schema}
         assert keys == {"email", "password", "pin"}
 
-    async def test_local_form_asks_only_pin(self):
+    async def test_local_form_asks_ip_and_pin(self):
         flow, _ = self._flow(LOCAL_DATA)
         await flow.async_step_reconfigure()
-        keys = {str(k) for k in flow.async_show_form.call_args.kwargs["data_schema"].schema}
-        assert keys == {"pin"}
+        schema = flow.async_show_form.call_args.kwargs["data_schema"]
+        assert {str(k) for k in schema.schema} == {"ip", "pin"}
+        assert schema({"pin": "1"})["ip"] == "192.168.1.5"  # prefilled with the current IP
+
+    async def test_local_success_updates_ip_and_pin(self):
+        flow, entry = self._flow(LOCAL_DATA)
+        with patch("custom_components.open_pico.config_flow._check_entry_data", AsyncMock(return_value=None)) as check:
+            await flow.async_step_reconfigure({"ip": " 192.168.1.9 ", "pin": "2222"})
+        expected = {**LOCAL_DATA, "ip": "192.168.1.9", "pin": "2222"}
+        check.assert_awaited_once_with(expected)
+        flow.async_update_reload_and_abort.assert_called_once_with(entry, data=expected)
 
     async def test_cloud_success_updates_entry(self):
         flow, entry = self._flow(CLOUD_DATA)
@@ -693,6 +702,37 @@ class TestReconfigure:
         expected = {**CLOUD_DATA, "email": "new@x.it", "password": "new", "pin": "2222"}
         check.assert_awaited_once_with(expected)
         flow.async_update_reload_and_abort.assert_called_once_with(entry, data=expected)
+
+    @pytest.mark.parametrize(
+        ("other", "error"),
+        [
+            ({"device_type": "polaris", "ip": "192.168.1.9"}, "ip_already_configured"),
+            # a cloud entry's "ip" never collides; the entry's own current IP is fine too
+            ({"device_type": "pico", "connection": "cloud", "ip": "192.168.1.9"}, None),
+        ],
+    )
+    async def test_ip_used_by_another_entry_is_rejected(self, other, error):
+        flow, entry = self._flow(LOCAL_DATA)
+        entry.entry_id = "this"
+        flow._async_current_entries = MagicMock(return_value=[
+            entry, MagicMock(entry_id="other", data=other),
+        ])
+        with patch("custom_components.open_pico.config_flow._check_entry_data", AsyncMock(return_value=None)) as check:
+            await flow.async_step_reconfigure({"ip": "192.168.1.9", "pin": "1111"})
+        if error:
+            check.assert_not_awaited()  # no connection attempt
+            flow.async_update_reload_and_abort.assert_not_called()
+            assert flow.async_show_form.call_args.kwargs["errors"] == {"base": error}
+        else:
+            flow.async_update_reload_and_abort.assert_called_once()
+
+    async def test_keeping_own_ip_is_allowed(self):
+        flow, entry = self._flow(LOCAL_DATA)
+        entry.entry_id = "this"
+        flow._async_current_entries = MagicMock(return_value=[entry])
+        with patch("custom_components.open_pico.config_flow._check_entry_data", AsyncMock(return_value=None)):
+            await flow.async_step_reconfigure({"ip": "192.168.1.5", "pin": "2222"})
+        flow.async_update_reload_and_abort.assert_called_once()
 
     async def test_wrong_pin_keeps_entry_and_shows_error(self):
         flow, _ = self._flow(CLOUD_DATA)
@@ -716,3 +756,29 @@ class TestReconfigure:
         with patch.object(config_flow, helper, AsyncMock(return_value=None)) as check:
             assert await config_flow._check_entry_data(data) is None
         check.assert_awaited_once_with(*args)
+
+
+class TestManualIpInUse:
+    @pytest.mark.parametrize(
+        ("step", "check"),
+        [("async_step_pico_manual", "_check_pico_local"), ("async_step_polaris_manual", "_check_polaris_local")],
+    )
+    async def test_ip_of_another_local_entry_is_rejected(self, step, check):
+        flow = _make_flow()
+        flow._async_current_entries = MagicMock(return_value=[
+            MagicMock(entry_id="other", data={"device_type": "pico", "ip": "192.168.1.9"}),
+        ])
+        with patch(f"custom_components.open_pico.config_flow.{check}", AsyncMock(return_value=None)) as checker:
+            await getattr(flow, step)({"ip": " 192.168.1.9 ", "pin": "1111", "name": "New"})
+        checker.assert_not_awaited()
+        flow.async_create_entry.assert_not_called()
+        assert flow.async_show_form.call_args.kwargs["errors"] == {"base": "ip_already_configured"}
+
+    async def test_ip_of_cloud_entry_is_allowed(self):
+        flow = _make_flow()
+        flow._async_current_entries = MagicMock(return_value=[
+            MagicMock(entry_id="other", data={"connection": "cloud", "ip": "192.168.1.9"}),
+        ])
+        with patch("custom_components.open_pico.config_flow._check_polaris_local", AsyncMock(return_value=None)):
+            await flow.async_step_polaris_manual({"ip": "192.168.1.9", "pin": "1111", "name": "New"})
+        flow.async_create_entry.assert_called_once()

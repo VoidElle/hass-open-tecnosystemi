@@ -88,8 +88,9 @@ The Tecnosystemi backend allows only one session per account at a time. While th
 | Polling interval (5–300 s) | **Configure** | all |
 | Command delay (0–30 s) | **Configure** | cloud only |
 | PIN | **Reconfigure** (entry menu ⋮) | all |
+| IP address | **Reconfigure** | local only |
 | Cloud email and password | **Reconfigure** | cloud only |
-| IP address, name | not changeable: remove the entry and add it again | all |
+| Name | not changeable: remove the entry and add it again | all |
 
 Default polling intervals: local Pico 5 seconds, local Polaris 60 seconds, cloud 30 seconds. **Configure** reloads the entry to apply the change. **Reconfigure** tests the new values against the device and keeps the old ones if the test fails.
 
@@ -144,7 +145,7 @@ Ensure you have fully restarted Home Assistant after installing the integration.
 ### Entities become unavailable
 - Confirm the device IP address hasn't changed. If your router uses DHCP, consider assigning a static/reserved IP to the device.
 - Enable debug logging (see [Debugging / Logging](#debugging--logging-) below) and check the Home Assistant logs for connection errors.
-- Re-adding the integration entry with the correct IP is the quickest fix if the address has drifted.
+- If the address has changed, enter the new one with **Reconfigure**.
 
 ### Wrong PIN / authentication failure
 - Double-check the PIN in the device's own app or manual.

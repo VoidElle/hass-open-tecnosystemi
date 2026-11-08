@@ -251,10 +251,12 @@ class TestAsyncUnloadEntry:
         from custom_components.open_pico import async_unload_entry
 
         entry = make_entry("pico", entry_id="e5")
-        mock_manager = MagicMock(shutdown=AsyncMock())
+        mock_manager = MagicMock(shutdown=AsyncMock(), remove_client=AsyncMock())
+        coordinator = MagicMock(async_shutdown=AsyncMock())
+        coordinator.client.device_id = "pico_test"
         mock_hass.data = {
             DOMAIN: {
-                "e5": {"coordinator": MagicMock(async_shutdown=AsyncMock()), "device_type": "pico"},
+                "e5": {"coordinator": coordinator, "device_type": "pico"},
                 "pico_manager": mock_manager,
             }
         }
@@ -263,6 +265,8 @@ class TestAsyncUnloadEntry:
 
         await async_unload_entry(mock_hass, entry)
         mock_manager.shutdown.assert_not_called()
+        # Cached client dropped, so a reload after Reconfigure uses the new IP/PIN.
+        mock_manager.remove_client.assert_awaited_once_with("pico_test")
 
     async def test_unload_shuts_down_manager_when_only_cloud_remains(self, mock_hass):
         from custom_components.open_pico import async_unload_entry

@@ -232,7 +232,9 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(f"pico_{name_slug}")
             self._abort_if_unique_id_configured()
 
-            if error := await _check_pico_local(ip, pin, f"pico_{name_slug}_cfgflow"):
+            if self._ip_in_use(ip):
+                errors["base"] = "ip_already_configured"
+            elif error := await _check_pico_local(ip, pin, f"pico_{name_slug}_cfgflow"):
                 errors["base"] = error
 
             if not errors:
@@ -553,7 +555,9 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(f"polaris_{name_slug}")
             self._abort_if_unique_id_configured()
 
-            if error := await _check_polaris_local(ip, pin):
+            if self._ip_in_use(ip):
+                errors["base"] = "ip_already_configured"
+            elif error := await _check_polaris_local(ip, pin):
                 errors["base"] = error
 
             if not errors:
@@ -837,27 +841,44 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
+    def _ip_in_use(self, ip: str, exclude_entry_id: str | None = None) -> bool:
+        """True when another local entry already points at this IP (exact text match)."""
+        return any(
+            other.entry_id != exclude_entry_id
+            and other.data.get("connection", "local") == "local"
+            and other.data.get("ip") == ip
+            for other in self._async_current_entries(include_ignore=False)
+        )
+
     # ─── Reconfigure: PIN and cloud credentials ───────────────────────
 
     async def async_step_reconfigure(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Change the PIN (and, for cloud entries, the account) of an existing entry."""
+        """Change the PIN, plus the IP (local) or the account (cloud), of an existing entry."""
         entry = self._get_reconfigure_entry()
         cloud = entry.data.get("connection", "local") == "cloud"
         errors: dict[str, str] = {}
 
         if user_input is not None:
             data = {**entry.data, "pin": user_input["pin"].strip()}
+            if not cloud:
+                data["ip"] = user_input["ip"].strip()
             if cloud:
                 data["email"] = user_input["email"].strip()
                 data["password"] = user_input["password"]
-            if error := await _check_entry_data(data):
+            if not cloud and self._ip_in_use(data["ip"], exclude_entry_id=entry.entry_id):
+                errors["base"] = "ip_already_configured"
+            elif error := await _check_entry_data(data):
                 errors["base"] = error
             else:
                 return self.async_update_reload_and_abort(entry, data=data)
 
         schema: dict[Any, Any] = {}
+        if not cloud:
+            schema[vol.Required("ip", default=entry.data["ip"])] = TextSelector(
+                TextSelectorConfig(type=TextSelectorType.TEXT)
+            )
         if cloud:
             schema[vol.Required("email", default=entry.data["email"])] = TextSelector(
                 TextSelectorConfig(type=TextSelectorType.EMAIL)

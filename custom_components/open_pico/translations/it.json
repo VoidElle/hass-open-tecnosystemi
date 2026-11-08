@@ -121,8 +121,9 @@
       },
       "reconfigure": {
         "title": "Riconfigura",
-        "description": "Aggiorna il PIN del dispositivo. Per i dispositivi cloud puoi cambiare anche l'account; la password va reinserita.",
+        "description": "Aggiorna il PIN del dispositivo. Per i dispositivi locali puoi cambiare anche l'indirizzo IP; per quelli cloud l'account, e la password va reinserita.",
         "data": {
+          "ip": "Indirizzo IP",
           "email": "Email",
           "password": "Password",
           "pin": "PIN"
@@ -136,7 +137,8 @@
       "no_devices_found": "Nessun nuovo dispositivo trovato in rete. Controlla la subnet inserita. I dispositivi scoperti potrebbero essere già configurati.",
       "no_cloud_devices": "Nessun dispositivo di questo tipo non ancora configurato trovato in questo account Tecnosystemi.",
       "invalid_auth": "Email o password non valide.",
-      "invalid_pin": "PIN errato."
+      "invalid_pin": "PIN errato.",
+      "ip_already_configured": "Questo indirizzo IP è già usato da un'altra entry."
     },
     "abort": {
       "already_configured": "Questo dispositivo è già configurato.",

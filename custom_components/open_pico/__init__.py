@@ -246,9 +246,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 for e in hass.config_entries.async_entries(DOMAIN)
                 if e.entry_id != entry.entry_id
             )
-            if not remaining_pico and "pico_manager" in hass.data.get(DOMAIN, {}):
+            manager = hass.data.get(DOMAIN, {}).get("pico_manager")
+            if manager is not None and remaining_pico:
+                # create_client returns a cached client: drop it so a reload uses the new IP/PIN.
+                if coordinator:
+                    await manager.remove_client(coordinator.client.device_id)
+            elif manager is not None:
                 try:
-                    await hass.data[DOMAIN]["pico_manager"].shutdown()
+                    await manager.shutdown()
                 except Exception as err:
                     _LOGGER.error("Error shutting down PicoClientManager: %s", err)
                 hass.data[DOMAIN].pop("pico_manager", None)

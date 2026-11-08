@@ -169,3 +169,16 @@ class TestShutdown:
 
         await manager.shutdown()
         mock_transport.shutdown.assert_called_once()
+
+
+class TestRemoveClient:
+    async def test_disconnects_and_forgets(self, manager):
+        client = MagicMock(connected=True, disconnect=AsyncMock())
+        manager._clients["dev1"] = client
+        await manager.remove_client("dev1")
+        client.disconnect.assert_awaited_once()
+        assert manager.get_client("dev1") is None
+
+    async def test_unknown_device_is_noop(self, manager):
+        await manager.remove_client("missing")
+        assert manager.client_count == 0
