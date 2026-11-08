@@ -9,7 +9,7 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.selector import (
     NumberSelector,
@@ -23,15 +23,137 @@ from homeassistant.helpers.selector import (
     TextSelectorType,
 )
 
-from .const import CLOUD_COMMAND_DELAY, CLOUD_SCAN_INTERVAL, DOMAIN
+from .const import CLOUD_COMMAND_DELAY, CLOUD_SCAN_INTERVAL, DOMAIN, POLARIS_SCAN_INTERVAL, entry_command_delay, entry_scan_interval
 
 _LOGGER = logging.getLogger(__name__)
+
+
+# ─── Connection checks (shared by setup and reconfigure) ─────────────
+# Each returns an errors["base"] key, or None when the device answered.
+
+async def _check_pico_local(ip: str, pin: str, device_id: str) -> str | None:
+    from open_pico_local_api import PicoClient  # noqa: PLC0415
+
+    client = None
+    try:
+        # Goes through the shared UDP transport, so it is safe while entries are running.
+        client = PicoClient(ip=ip, pin=pin, device_id=device_id, timeout=10)
+        await asyncio.wait_for(client.connect(), timeout=15)
+        await asyncio.wait_for(client.get_status(), timeout=15)
+    except asyncio.TimeoutError:
+        return "timeout"
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.debug("Pico validation failed for %s: %s", ip, err)
+        return "cannot_connect"
+    finally:
+        if client is not None:
+            try:
+                await client.disconnect()
+            except Exception:  # noqa: BLE001
+                pass
+    return None
+
+
+async def _check_pico_cloud(
+    email: str, password: str, serial: str, pin: str, name: str, android_id: str,
+) -> str | None:
+    from open_pico_local_api import PicoDeviceError  # noqa: PLC0415
+    from open_pico_local_api.cloud import PicoAuthError, PicoCloudClient  # noqa: PLC0415
+
+    client = None
+    try:
+        client = PicoCloudClient(
+            email, password, serial=serial, pin=pin, name=name, device_id=android_id,
+        )
+        await asyncio.wait_for(client.connect(), timeout=30)
+        await asyncio.wait_for(client.get_status(), timeout=30)
+    except PicoAuthError:
+        return "invalid_auth"
+    except PicoDeviceError as err:
+        _LOGGER.debug("Pico cloud validation failed for %s: %s", serial, err)
+        return "invalid_pin" if "Wrong PIN" in str(err) else "cannot_connect"
+    except asyncio.TimeoutError:
+        return "timeout"
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.debug("Pico cloud validation failed for %s: %s", serial, err)
+        return "cannot_connect"
+    finally:
+        if client is not None:
+            await client.disconnect()
+    return None
+
+
+async def _check_polaris_local(ip: str, pin: str) -> str | None:
+    from open_polaris_local_api import PolarisApiError, PolarisLocalClient  # noqa: PLC0415
+
+    try:
+        client = PolarisLocalClient(ip=ip, pin=pin, timeout=10)
+        await asyncio.wait_for(client.connect(), timeout=15)
+        await client.close()
+    except asyncio.TimeoutError:
+        return "timeout"
+    except PolarisApiError as err:
+        # The CU answered but rejected stato (res != 1): the PIN is its only input.
+        _LOGGER.debug("Polaris validation rejected for %s: %s", ip, err)
+        return "invalid_pin"
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.debug("Polaris validation failed for %s: %s", ip, err)
+        return "cannot_connect"
+    return None
+
+
+async def _check_polaris_cloud(
+    email: str, password: str, serial: str, pin: str, name: str, android_id: str,
+) -> str | None:
+    from open_polaris_local_api import PolarisApiError  # noqa: PLC0415
+    from open_polaris_local_api.cloud import PolarisAuthError, PolarisCloudClient  # noqa: PLC0415
+
+    client = None
+    try:
+        client = PolarisCloudClient(
+            email, password, serial=serial, pin=pin, name=name, android_id=android_id,
+        )
+        # connect() logs in and reads GetCUState: a wrong PIN fails here
+        await asyncio.wait_for(client.connect(), timeout=30)
+    except PolarisAuthError:
+        return "invalid_auth"
+    except PolarisApiError as err:
+        _LOGGER.debug("Polaris cloud validation failed for %s: %s", serial, err)
+        return "invalid_pin" if "Wrong PIN" in str(err) else "cannot_connect"
+    except asyncio.TimeoutError:
+        return "timeout"
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.debug("Polaris cloud validation failed for %s: %s", serial, err)
+        return "cannot_connect"
+    finally:
+        if client is not None:
+            await client.disconnect()
+    return None
+
+
+async def _check_entry_data(data: dict[str, Any]) -> str | None:
+    """Check the connection described by a stored config entry's data."""
+    polaris = data.get("device_type", "pico") == "polaris"
+    if data.get("connection", "local") == "cloud":
+        check = _check_polaris_cloud if polaris else _check_pico_cloud
+        return await check(
+            data["email"], data["password"], data["serial"],
+            data["pin"], data["name"], data["android_id"],
+        )
+    if polaris:
+        return await _check_polaris_local(data["ip"], data["pin"])
+    name_slug = re.sub(r"[^a-z0-9]+", "_", data["name"].lower()).strip("_")
+    return await _check_pico_local(data["ip"], data["pin"], f"pico_{name_slug}_cfgflow")
 
 
 class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Open Pico / Open Polaris."""
 
     VERSION = 1
+
+    @staticmethod
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        return OpenPicoOptionsFlow()
 
     def __init__(self) -> None:
         self._device_type: str | None = None
@@ -110,22 +232,8 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(f"pico_{name_slug}")
             self._abort_if_unique_id_configured()
 
-            try:
-                from open_pico_local_api import PicoClient  # noqa: PLC0415
-                client = PicoClient(
-                    ip=ip,
-                    pin=pin,
-                    device_id=f"pico_{name_slug}_cfgflow",
-                    timeout=10,
-                )
-                await asyncio.wait_for(client.connect(), timeout=15)
-                await asyncio.wait_for(client.get_status(), timeout=15)
-                await client.disconnect()
-            except asyncio.TimeoutError:
-                errors["base"] = "timeout"
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.debug("Pico manual validation failed for %s: %s", ip, err)
-                errors["base"] = "cannot_connect"
+            if error := await _check_pico_local(ip, pin, f"pico_{name_slug}_cfgflow"):
+                errors["base"] = error
 
             if not errors:
                 return self.async_create_entry(
@@ -236,38 +344,10 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(f"pico_{name_slug}")
             self._abort_if_unique_id_configured()
 
-            client = None
-            try:
-                from open_pico_local_api import PicoDeviceError  # noqa: PLC0415
-                from open_pico_local_api.cloud import (  # noqa: PLC0415
-                    PicoAuthError,
-                    PicoCloudClient,
-                )
-                client = PicoCloudClient(
-                    self._cloud_email,
-                    self._cloud_password,
-                    serial=serial,
-                    pin=pin,
-                    name=name,
-                    device_id=android_id,
-                )
-                await asyncio.wait_for(client.connect(), timeout=30)
-                await asyncio.wait_for(client.get_status(), timeout=30)
-            except PicoAuthError:
-                errors["base"] = "invalid_auth"
-            except PicoDeviceError as err:
-                _LOGGER.debug("Pico cloud validation failed for %s: %s", serial, err)
-                errors["base"] = (
-                    "invalid_pin" if "Wrong PIN" in str(err) else "cannot_connect"
-                )
-            except asyncio.TimeoutError:
-                errors["base"] = "timeout"
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.debug("Pico cloud validation failed for %s: %s", serial, err)
-                errors["base"] = "cannot_connect"
-            finally:
-                if client is not None:
-                    await client.disconnect()
+            if error := await _check_pico_cloud(
+                self._cloud_email, self._cloud_password, serial, pin, name, android_id,
+            ):
+                errors["base"] = error
 
             if not errors:
                 return self.async_create_entry(
@@ -399,22 +479,8 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
             name = user_input["name"].strip()
             name_slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
-            try:
-                from open_pico_local_api import PicoClient  # noqa: PLC0415
-                client = PicoClient(
-                    ip=ip,
-                    pin=self._scan_pin,
-                    device_id=f"pico_{name_slug}_cfgflow",
-                    timeout=10,
-                )
-                await asyncio.wait_for(client.connect(), timeout=15)
-                await asyncio.wait_for(client.get_status(), timeout=15)
-                await client.disconnect()
-            except asyncio.TimeoutError:
-                errors["base"] = "timeout"
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.debug("Pico scan confirm validation failed for %s: %s", ip, err)
-                errors["base"] = "cannot_connect"
+            if error := await _check_pico_local(ip, self._scan_pin, f"pico_{name_slug}_cfgflow"):
+                errors["base"] = error
 
             if not errors:
                 await self.async_set_unique_id(f"pico_{name_slug}")
@@ -481,22 +547,14 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
             ip = user_input["ip"].strip()
             pin = user_input["pin"].strip()
             name = user_input["name"].strip()
-            scan_interval = int(user_input.get("scan_interval", 30))
+            scan_interval = int(user_input.get("scan_interval", POLARIS_SCAN_INTERVAL))
             name_slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
             await self.async_set_unique_id(f"polaris_{name_slug}")
             self._abort_if_unique_id_configured()
 
-            try:
-                from open_polaris_local_api import PolarisLocalClient  # noqa: PLC0415
-                client = PolarisLocalClient(ip=ip, pin=pin, timeout=10)
-                await asyncio.wait_for(client.connect(), timeout=15)
-                await client.close()
-            except asyncio.TimeoutError:
-                errors["base"] = "timeout"
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.debug("Polaris manual validation failed for %s: %s", ip, err)
-                errors["base"] = "cannot_connect"
+            if error := await _check_polaris_local(ip, pin):
+                errors["base"] = error
 
             if not errors:
                 return self.async_create_entry(
@@ -523,7 +581,7 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Required("name"): TextSelector(
                     TextSelectorConfig(type=TextSelectorType.TEXT)
                 ),
-                vol.Optional("scan_interval", default=30): NumberSelector(
+                vol.Optional("scan_interval", default=POLARIS_SCAN_INTERVAL): NumberSelector(
                     NumberSelectorConfig(min=10, max=300, step=5, mode=NumberSelectorMode.BOX)
                 ),
             }),
@@ -610,38 +668,10 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
             await self.async_set_unique_id(f"polaris_{name_slug}")
             self._abort_if_unique_id_configured()
 
-            client = None
-            try:
-                from open_polaris_local_api import PolarisApiError  # noqa: PLC0415
-                from open_polaris_local_api.cloud import (  # noqa: PLC0415
-                    PolarisAuthError,
-                    PolarisCloudClient,
-                )
-                client = PolarisCloudClient(
-                    self._cloud_email,
-                    self._cloud_password,
-                    serial=serial,
-                    pin=pin,
-                    name=name,
-                    android_id=android_id,
-                )
-                # connect() logs in and reads GetCUState: a wrong PIN fails here
-                await asyncio.wait_for(client.connect(), timeout=30)
-            except PolarisAuthError:
-                errors["base"] = "invalid_auth"
-            except PolarisApiError as err:
-                _LOGGER.debug("Polaris cloud validation failed for %s: %s", serial, err)
-                errors["base"] = (
-                    "invalid_pin" if "Wrong PIN" in str(err) else "cannot_connect"
-                )
-            except asyncio.TimeoutError:
-                errors["base"] = "timeout"
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.debug("Polaris cloud validation failed for %s: %s", serial, err)
-                errors["base"] = "cannot_connect"
-            finally:
-                if client is not None:
-                    await client.disconnect()
+            if error := await _check_polaris_cloud(
+                self._cloud_email, self._cloud_password, serial, pin, name, android_id,
+            ):
+                errors["base"] = error
 
             if not errors:
                 return self.async_create_entry(
@@ -771,19 +801,11 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             name = user_input["name"].strip()
-            scan_interval = int(user_input.get("scan_interval", 30))
+            scan_interval = int(user_input.get("scan_interval", POLARIS_SCAN_INTERVAL))
             name_slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
 
-            try:
-                from open_polaris_local_api import PolarisLocalClient  # noqa: PLC0415
-                client = PolarisLocalClient(ip=ip, pin=self._scan_pin, timeout=10)
-                await asyncio.wait_for(client.connect(), timeout=15)
-                await client.close()
-            except asyncio.TimeoutError:
-                errors["base"] = "timeout"
-            except Exception as err:  # noqa: BLE001
-                _LOGGER.debug("Polaris scan confirm validation failed for %s: %s", ip, err)
-                errors["base"] = "cannot_connect"
+            if error := await _check_polaris_local(ip, self._scan_pin):
+                errors["base"] = error
 
             if not errors:
                 await self.async_set_unique_id(f"polaris_{name_slug}")
@@ -807,10 +829,70 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
                 vol.Required("name"): TextSelector(
                     TextSelectorConfig(type=TextSelectorType.TEXT)
                 ),
-                vol.Optional("scan_interval", default=30): NumberSelector(
+                vol.Optional("scan_interval", default=POLARIS_SCAN_INTERVAL): NumberSelector(
                     NumberSelectorConfig(min=10, max=300, step=5, mode=NumberSelectorMode.BOX)
                 ),
             }),
             description_placeholders={"ip": ip},
             errors=errors,
         )
+
+    # ─── Reconfigure: PIN and cloud credentials ───────────────────────
+
+    async def async_step_reconfigure(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Change the PIN (and, for cloud entries, the account) of an existing entry."""
+        entry = self._get_reconfigure_entry()
+        cloud = entry.data.get("connection", "local") == "cloud"
+        errors: dict[str, str] = {}
+
+        if user_input is not None:
+            data = {**entry.data, "pin": user_input["pin"].strip()}
+            if cloud:
+                data["email"] = user_input["email"].strip()
+                data["password"] = user_input["password"]
+            if error := await _check_entry_data(data):
+                errors["base"] = error
+            else:
+                return self.async_update_reload_and_abort(entry, data=data)
+
+        schema: dict[Any, Any] = {}
+        if cloud:
+            schema[vol.Required("email", default=entry.data["email"])] = TextSelector(
+                TextSelectorConfig(type=TextSelectorType.EMAIL)
+            )
+            schema[vol.Required("password")] = TextSelector(
+                TextSelectorConfig(type=TextSelectorType.PASSWORD)
+            )
+        schema[vol.Required("pin")] = TextSelector(
+            TextSelectorConfig(type=TextSelectorType.PASSWORD)
+        )
+        return self.async_show_form(
+            step_id="reconfigure", data_schema=vol.Schema(schema), errors=errors,
+        )
+
+
+class OpenPicoOptionsFlow(OptionsFlow):
+    """Change the polling interval of an existing entry."""
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        if user_input is not None:
+            return self.async_create_entry(
+                data={key: int(value) for key, value in user_input.items()}
+            )
+
+        entry = self.config_entry
+        schema: dict[Any, Any] = {
+            vol.Required("scan_interval", default=entry_scan_interval(entry)): NumberSelector(
+                # min 5: local Pico default; 10-300 are the setup-form bounds
+                NumberSelectorConfig(min=5, max=300, step=5, mode=NumberSelectorMode.BOX)
+            ),
+        }
+        if entry.data.get("connection", "local") == "cloud":
+            schema[vol.Required("command_delay", default=entry_command_delay(entry))] = NumberSelector(
+                NumberSelectorConfig(min=0, max=30, step=1, mode=NumberSelectorMode.BOX)
+            )
+        return self.async_show_form(step_id="init", data_schema=vol.Schema(schema))

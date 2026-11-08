@@ -8,6 +8,26 @@ DEFAULT_SCAN_INTERVAL = 5
 CLOUD_SCAN_INTERVAL = 30
 CLOUD_COMMAND_DELAY = 3
 
+# Polaris local TCP: the CU's network stack is fragile, poll gently
+POLARIS_SCAN_INTERVAL = 60
+
+
+def entry_scan_interval(entry) -> int:
+    """Polling interval of a config entry: options flow, then setup form, then type default."""
+    data = entry.data
+    if data.get("connection", "local") == "cloud":
+        default = CLOUD_SCAN_INTERVAL
+    elif data.get("device_type", "pico") == "polaris":
+        default = POLARIS_SCAN_INTERVAL
+    else:
+        default = DEFAULT_SCAN_INTERVAL
+    return entry.options.get("scan_interval", data.get("scan_interval", default))
+
+
+def entry_command_delay(entry) -> int:
+    """Cloud command settle delay: options flow, then setup form, then default."""
+    return entry.options.get("command_delay", entry.data.get("command_delay", CLOUD_COMMAND_DELAY))
+
 # Device mode mapping - single source of truth
 MODE_INT_TO_PRESET = {
     1: "heat_recovery",

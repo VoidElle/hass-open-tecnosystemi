@@ -21,6 +21,7 @@ def make_entry(device_type: str, entry_id: str = "entry1", name: str = "Test") -
         "verbose": False,
         "scan_interval": 30,
     }
+    entry.options = {}
     return entry
 
 
@@ -151,12 +152,15 @@ class TestSetupPicoEntry:
         with (
             patch("custom_components.open_pico.PicoClientManager", return_value=manager),
             patch("custom_components.open_pico.PicoCloudClient") as cloud_cls,
-            patch("custom_components.open_pico.MainCoordinator", return_value=coordinator),
+            patch("custom_components.open_pico.MainCoordinator", return_value=coordinator) as coord_cls,
         ):
-            await _setup_pico_entry(mock_hass, make_entry("pico"))
+            entry = make_entry("pico")
+            entry.options = {"scan_interval": 15}
+            await _setup_pico_entry(mock_hass, entry)
 
         cloud_cls.assert_not_called()
         manager.create_client.assert_called_once()
+        assert coord_cls.call_args.kwargs == {"scan_interval": 15}
 
 
 class TestAsyncUnloadEntry:
@@ -378,3 +382,24 @@ class TestSetupPolarisEntry:
         cloud_cls.assert_not_called()
         assert local_cls.call_args.kwargs["ip"] == "192.168.1.50"
         assert coord_cls.call_args.kwargs == {"scan_interval": 30}
+
+    @pytest.mark.parametrize(
+        ("data_interval", "options", "expected"),
+        [(None, {}, 60), (30, {}, 30), (30, {"scan_interval": 120}, 120)],
+    )
+    async def test_local_scan_interval(self, mock_hass, mock_polaris_client, data_interval, options, expected):
+        from custom_components.open_pico import _setup_polaris_entry
+
+        entry = make_entry("polaris")
+        entry.data = {k: v for k, v in entry.data.items() if k != "scan_interval"}
+        if data_interval is not None:
+            entry.data["scan_interval"] = data_interval
+        entry.options = options
+        coordinator = MagicMock(last_update_success=True, async_refresh=AsyncMock())
+        with (
+            patch("custom_components.open_pico.PolarisLocalClient", return_value=mock_polaris_client),
+            patch("custom_components.open_pico.PolarisCoordinator", return_value=coordinator) as coord_cls,
+        ):
+            await _setup_polaris_entry(mock_hass, entry)
+
+        assert coord_cls.call_args.kwargs == {"scan_interval": expected}

@@ -118,6 +118,15 @@
           "scan_interval": "Intervallo di Polling (secondi)",
           "command_delay": "Attesa Aggiornamento dopo Comando (secondi)"
         }
+      },
+      "reconfigure": {
+        "title": "Riconfigura",
+        "description": "Aggiorna il PIN del dispositivo. Per i dispositivi cloud puoi cambiare anche l'account; la password va reinserita.",
+        "data": {
+          "email": "Email",
+          "password": "Password",
+          "pin": "PIN"
+        }
       }
     },
     "error": {
@@ -130,7 +139,8 @@
       "invalid_pin": "PIN errato."
     },
     "abort": {
-      "already_configured": "Questo dispositivo è già configurato."
+      "already_configured": "Questo dispositivo è già configurato.",
+      "reconfigure_successful": "Configurazione aggiornata."
     }
   },
   "entity": {
@@ -240,6 +250,17 @@
         "manual": "Manuale",
         "scan": "Scansione",
         "cloud": "Cloud (account Tecnosystemi)"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Opzioni",
+        "data": {
+          "scan_interval": "Intervallo di Polling (secondi)",
+          "command_delay": "Attesa Aggiornamento dopo Comando (secondi)"
+        }
       }
     }
   }

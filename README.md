@@ -4,13 +4,13 @@
   <h1>🏠 Open Tecnosystemi</h1>
   <p><em>Home Assistant integration for Tecnosystemi Pico and Polaris 5X devices</em></p>
   <br>
-  <a href="https://github.com/VoidElle/open-pico-local-api"><img src="https://img.shields.io/badge/open--pico--local--api-v2.6.3-blue?style=flat-square&logo=github" alt="open-pico-local-api"></a>
-  <a href="https://github.com/VoidElle/open-polaris-local-api"><img src="https://img.shields.io/badge/open--polaris--local--api-v1.2.5-blue?style=flat-square&logo=github" alt="open-polaris-local-api"></a>
+  <a href="https://github.com/VoidElle/open-pico-local-api"><img src="https://img.shields.io/badge/open--pico--local--api-v2.7.0-blue?style=flat-square&logo=github" alt="open-pico-local-api"></a>
+  <a href="https://github.com/VoidElle/open-polaris-local-api"><img src="https://img.shields.io/badge/open--polaris--local--api-v2.0.1-blue?style=flat-square&logo=github" alt="open-polaris-local-api"></a>
   <a href="https://github.com/VoidElle/hass-open-tecnosystemi/releases"><img src="https://img.shields.io/github/v/release/VoidElle/hass-open-tecnosystemi?style=flat-square&label=version" alt="version"></a>
   <a href="https://github.com/VoidElle/hass-open-tecnosystemi/blob/master/LICENSE"><img src="https://img.shields.io/github/license/VoidElle/hass-open-tecnosystemi?style=flat-square" alt="license"></a>
   <br>
   <a href="https://hacs.xyz"><img src="https://img.shields.io/badge/HACS-Default-41BDF5?style=flat-square&logo=home-assistant-community-store" alt="HACS"></a>
-  <a href="https://www.home-assistant.io/"><img src="https://img.shields.io/badge/Home%20Assistant-%E2%89%A52024.1-41BDF5?style=flat-square&logo=home-assistant" alt="Home Assistant"></a>
+  <a href="https://www.home-assistant.io/"><img src="https://img.shields.io/badge/Home%20Assistant-%E2%89%A52024.11-41BDF5?style=flat-square&logo=home-assistant" alt="Home Assistant"></a>
   <a href="https://github.com/VoidElle/hass-open-tecnosystemi/stargazers"><img src="https://img.shields.io/github/stars/VoidElle/hass-open-tecnosystemi?style=flat-square" alt="stars"></a>
   <a href="https://github.com/VoidElle/hass-open-tecnosystemi/commits"><img src="https://img.shields.io/github/last-commit/VoidElle/hass-open-tecnosystemi?style=flat-square" alt="last commit"></a>
   <a href="https://github.com/VoidElle/hass-open-tecnosystemi/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflow/status/VoidElle/hass-open-tecnosystemi/tests.yml?style=flat-square&label=tests" alt="tests"></a>
@@ -23,7 +23,7 @@ Open Tecnosystemi is a Home Assistant integration that enables management of Tec
 - **Pico** - Local UDP-based ventilation and air quality units
 - **Polaris 5X** - Local TCP-based HVAC zone controllers
 
-Both device families communicate **over your local network**. Both also have an optional cloud fallback for units Home Assistant cannot reach on the LAN.
+Both device families communicate **over your local network**. Both can also be set up through the Tecnosystemi cloud instead, for units Home Assistant cannot reach on the LAN.
 
 ## Installation 📦
 ### Via HACS (Recommended) ⭐
@@ -69,17 +69,29 @@ Instead of entering the IP manually, both Pico and Polaris support network scann
 
 Already-configured devices are automatically excluded from scan results.
 
-### Cloud fallback
+### Cloud connection
 
-Use **Cloud** only when the Pico or the Polaris CU is not reachable on your local network.
+Use **Cloud** only when the Pico or the Polaris CU is not reachable on your local network. The connection type is chosen once, at setup: an entry set up locally never switches to the cloud, and a cloud entry never uses the LAN.
 
 1. Select **Cloud** as the setup method
 2. Enter your Tecnosystemi account email and password
 3. Pick the device, then enter its PIN and a name
 
-Notes: state is polled every 30 seconds and the refresh after a command waits 3 seconds, because the vendor backend applies commands with a delay. Both values can be changed in the device step (raise the command delay if the state flips back after a command). The account credentials are stored in the config entry. Polaris CUs with firmware older than 4.x can take up to 10 minutes to apply a cloud command.
+Notes: state is polled every 30 seconds and the refresh after a command waits 3 seconds, because the vendor backend applies commands with a delay. Both values can be set in the device step and changed later with **Configure** (raise the command delay if the state flips back after a command). The account credentials are stored in the config entry. Polaris CUs with firmware older than 4.x can take up to 10 minutes to apply a cloud command.
 
 The Tecnosystemi backend allows only one session per account at a time. While the integration is running, the official app shows an alert and stops working. To change something from the app, disable the integration first and enable it again afterwards.
+
+### Changing settings after setup
+
+| Setting | Where | Entries |
+|---|---|---|
+| Polling interval (5–300 s) | **Configure** | all |
+| Command delay (0–30 s) | **Configure** | cloud only |
+| PIN | **Reconfigure** (entry menu ⋮) | all |
+| Cloud email and password | **Reconfigure** | cloud only |
+| IP address, name | not changeable: remove the entry and add it again | all |
+
+Default polling intervals: local Pico 5 seconds, local Polaris 60 seconds, cloud 30 seconds. **Configure** reloads the entry to apply the change. **Reconfigure** tests the new values against the device and keeps the old ones if the test fails.
 
 ## Features ✨
 
@@ -88,7 +100,7 @@ The Tecnosystemi backend allows only one session per account at a time. While th
 - 📊 **Real-time Monitoring**: Temperature, humidity, CO2, TVOC sensors
 - 🎛️ **Full Control**: Operating modes, fan speed, night mode, LED control, target humidity
 - 🧹 **Filter Maintenance**: Maintenance alert binary sensor and reset button
-- ☁️ **Cloud Fallback**: Optional, for units not reachable on the LAN
+- ☁️ **Cloud Connection**: Optional, for units not reachable on the LAN
 
 #### Mode-dependent controls
 Like the official app, some Pico controls only work in certain operating modes:
@@ -105,15 +117,14 @@ CO2, eCO2 and TVOC read 0 on models without the air quality sensor. They also re
 - 📊 **Operating Mode**: Global CU operating mode sensor
 - 🌀 **Damper Control**: Per-zone damper (serranda) position via the zone climate swing mode
 - 🚨 **Error Sensors**: CU and per-zone error binary sensors
-- ☁️ **Cloud Fallback**: Optional, for CUs not reachable on the LAN
+- ☁️ **Cloud Connection**: Optional, for CUs not reachable on the LAN
 
 ### General
 - 🔄 **Multi-Device Support**: Control multiple devices of both types simultaneously
 - 🏷️ **Device Organization**: Entities are grouped per device for easy management
-- ⚡ **Concurrent Polling**: Efficient updates across all devices
 
 ## Limitations ⚠️
-- Pico and Polaris need local network access unless set up with the cloud fallback, which depends on the Tecnosystemi backend
+- Pico and Polaris need local network access unless set up with the cloud connection, which depends on the Tecnosystemi backend
 - Polaris in cloud mode: no damper (swing) control on MiniDiscovery2X zones, because the cloud does not report their damper setpoint
 
 ## Documentation 📖
@@ -137,10 +148,14 @@ Ensure you have fully restarted Home Assistant after installing the integration.
 
 ### Wrong PIN / authentication failure
 - Double-check the PIN in the device's own app or manual.
-- The PIN is sent as part of every UDP/TCP request. A mismatch will cause all entities to remain unavailable.
+- Setup and **Reconfigure** test the PIN and show **Wrong PIN** when the device rejects it (cloud entries and local Polaris; a local Pico with a wrong PIN shows a connection error).
+- If the PIN of an existing entry changed, update it with **Reconfigure** instead of re-adding the device.
+
+### Polaris CU drops off the network
+The Polaris CU has a small network stack. If it goes offline often, or the official app stops seeing it while the integration runs, raise the polling interval with **Configure** (for example to 120 seconds).
 
 ### Changes not reflected in Home Assistant
-Both coordinators poll on a fixed interval. If an update seems delayed, you can force a refresh from **Developer Tools → Actions** by calling `homeassistant.update_entity` on the affected entity.
+Each entry polls on a fixed interval (see [Changing settings after setup](#changing-settings-after-setup)). If an update seems delayed, you can force a refresh from **Developer Tools → Actions** by calling `homeassistant.update_entity` on the affected entity.
 
 ## Debugging / Logging 🪵
 

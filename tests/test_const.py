@@ -65,3 +65,33 @@ class TestPolarisCoolingModes:
         assert POLARIS_COOLING_MODES[1] == "cooling"
         assert POLARIS_COOLING_MODES[2] == "dehumidification"
         assert POLARIS_COOLING_MODES[3] == "ventilation"
+
+
+@pytest.mark.parametrize(
+    ("data", "options", "expected"),
+    [
+        ({"device_type": "pico"}, {}, 5),
+        ({"device_type": "polaris"}, {}, 60),
+        ({"device_type": "polaris", "connection": "cloud"}, {}, 30),
+        ({"device_type": "pico", "connection": "cloud", "scan_interval": 45}, {}, 45),
+        ({"device_type": "pico", "scan_interval": 45}, {"scan_interval": 20}, 20),
+    ],
+)
+def test_entry_scan_interval(data, options, expected):
+    from unittest.mock import MagicMock
+
+    from custom_components.open_pico.const import entry_scan_interval
+
+    assert entry_scan_interval(MagicMock(data=data, options=options)) == expected
+
+
+@pytest.mark.parametrize(
+    ("data", "options", "expected"),
+    [({}, {}, 3), ({"command_delay": 6}, {}, 6), ({"command_delay": 6}, {"command_delay": 0}, 0)],
+)
+def test_entry_command_delay(data, options, expected):
+    from unittest.mock import MagicMock
+
+    from custom_components.open_pico.const import entry_command_delay
+
+    assert entry_command_delay(MagicMock(data=data, options=options)) == expected

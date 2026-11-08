@@ -24,7 +24,7 @@ from open_pico_local_api.cloud import PicoAuthError, PicoCloudClient
 from open_polaris_local_api import PolarisApiError, PolarisLocalClient
 from open_polaris_local_api.cloud import PolarisAuthError, PolarisCloudClient
 
-from .const import CLOUD_COMMAND_DELAY, CLOUD_SCAN_INTERVAL, DOMAIN
+from .const import DOMAIN, entry_command_delay, entry_scan_interval
 from .coordinator import MainCoordinator
 from .pico_manager import PicoClientManager
 from .polaris_coordinator import PolarisCoordinator
@@ -69,8 +69,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     }
 
     await hass.config_entries.async_forward_entry_setups(entry, platforms)
+    entry.async_on_unload(entry.add_update_listener(_async_reload_entry))
     _LOGGER.info("Config entry set up: %s (%s)", entry.title, device_type)
     return True
+
+
+async def _async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Apply a changed options-flow value."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def _setup_pico_entry(hass: HomeAssistant, entry: ConfigEntry) -> MainCoordinator:
@@ -97,8 +103,8 @@ async def _setup_pico_entry(hass: HomeAssistant, entry: ConfigEntry) -> MainCoor
 
         coordinator = MainCoordinator(
             hass, client, name,
-            scan_interval=entry.data.get("scan_interval", CLOUD_SCAN_INTERVAL),
-            command_delay=entry.data.get("command_delay", CLOUD_COMMAND_DELAY),
+            scan_interval=entry_scan_interval(entry),
+            command_delay=entry_command_delay(entry),
         )
     else:
         ip: str = entry.data["ip"]
@@ -131,7 +137,7 @@ async def _setup_pico_entry(hass: HomeAssistant, entry: ConfigEntry) -> MainCoor
         except Exception as err:
             raise ConfigEntryNotReady(f"Cannot connect to Pico {ip}: {err}") from err
 
-        coordinator = MainCoordinator(hass, client, name)
+        coordinator = MainCoordinator(hass, client, name, scan_interval=entry_scan_interval(entry))
 
     try:
         async with asyncio.timeout(30):
@@ -176,8 +182,8 @@ async def _setup_polaris_entry(hass: HomeAssistant, entry: ConfigEntry) -> Polar
 
         coordinator = PolarisCoordinator(
             hass, client, name,
-            scan_interval=entry.data.get("scan_interval", CLOUD_SCAN_INTERVAL),
-            command_delay=entry.data.get("command_delay", CLOUD_COMMAND_DELAY),
+            scan_interval=entry_scan_interval(entry),
+            command_delay=entry_command_delay(entry),
             cloud=True,
         )
     else:
@@ -193,7 +199,7 @@ async def _setup_polaris_entry(hass: HomeAssistant, entry: ConfigEntry) -> Polar
             raise ConfigEntryNotReady(f"Cannot connect to Polaris {ip}: {err}") from err
 
         coordinator = PolarisCoordinator(
-            hass, client, name, scan_interval=entry.data.get("scan_interval", 30),
+            hass, client, name, scan_interval=entry_scan_interval(entry),
         )
 
     try:

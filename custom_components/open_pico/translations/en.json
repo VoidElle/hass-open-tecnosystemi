@@ -118,6 +118,15 @@
           "scan_interval": "Polling Interval (seconds)",
           "command_delay": "Command Refresh Delay (seconds)"
         }
+      },
+      "reconfigure": {
+        "title": "Reconfigure",
+        "description": "Update the device PIN. For cloud devices you can also change the account; the password must be entered again.",
+        "data": {
+          "email": "Email",
+          "password": "Password",
+          "pin": "PIN"
+        }
       }
     },
     "error": {
@@ -130,7 +139,8 @@
       "invalid_pin": "Wrong PIN."
     },
     "abort": {
-      "already_configured": "This device is already configured."
+      "already_configured": "This device is already configured.",
+      "reconfigure_successful": "Configuration updated."
     }
   },
   "entity": {
@@ -240,6 +250,17 @@
         "manual": "Manual",
         "scan": "Scan",
         "cloud": "Cloud (Tecnosystemi account)"
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options",
+        "data": {
+          "scan_interval": "Polling Interval (seconds)",
+          "command_delay": "Command Refresh Delay (seconds)"
+        }
       }
     }
   }

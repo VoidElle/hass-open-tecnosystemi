@@ -2,11 +2,11 @@
 from __future__ import annotations
 
 import asyncio
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, PropertyMock, patch
 
 import pytest
 
-from custom_components.open_pico.config_flow import OpenPicoConfigFlow
+from custom_components.open_pico.config_flow import OpenPicoConfigFlow, OpenPicoOptionsFlow
 
 
 # ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -302,6 +302,18 @@ class TestStepPolarisManual:
 
         call_kwargs = flow.async_show_form.call_args[1]
         assert call_kwargs["errors"]["base"] == "cannot_connect"
+
+    async def test_rejected_reply_shows_invalid_pin(self):
+        from open_polaris_local_api import PolarisApiError
+
+        flow = _make_flow()
+        with patch("open_polaris_local_api.PolarisLocalClient"):
+            with patch("asyncio.wait_for", side_effect=PolarisApiError("stato error: res=0")):
+                await flow.async_step_polaris_manual({
+                    "ip": "192.168.1.60", "pin": "0000", "name": "Test Polaris",
+                })
+
+        assert flow.async_show_form.call_args[1]["errors"]["base"] == "invalid_pin"
 
 
 # ─── Polaris: scan ───────────────────────────────────────────────────────────
@@ -606,3 +618,101 @@ class TestStepPolarisCloudDevice:
         assert flow.async_show_form.call_args[1]["errors"]["base"] == "cannot_connect"
         flow.async_create_entry.assert_not_called()
         client.disconnect.assert_awaited_once()
+
+
+class TestOptionsFlow:
+    @pytest.fixture
+    def entry(self):
+        entry = MagicMock(data={"scan_interval": 60}, options={})
+        with patch.object(OpenPicoOptionsFlow, "config_entry", new_callable=PropertyMock, return_value=entry):
+            yield entry
+
+    @pytest.mark.parametrize(("options", "expected"), [({}, 60), ({"scan_interval": 120}, 120)])
+    async def test_form_defaults_to_current_value(self, entry, options, expected):
+        entry.options = options
+        flow = OpenPicoOptionsFlow()
+        flow.async_show_form = MagicMock(return_value={"type": "form"})
+        await flow.async_step_init()
+        schema = flow.async_show_form.call_args.kwargs["data_schema"]
+        assert schema({})["scan_interval"] == expected
+
+    async def test_saves_scan_interval(self, entry):
+        flow = OpenPicoOptionsFlow()
+        flow.async_create_entry = MagicMock(return_value={"type": "create_entry"})
+        await flow.async_step_init({"scan_interval": 90.0})
+        flow.async_create_entry.assert_called_once_with(data={"scan_interval": 90})
+
+    async def test_cloud_entry_also_offers_command_delay(self, entry):
+        entry.data = {"connection": "cloud", "scan_interval": 30, "command_delay": 3}
+        entry.options = {"command_delay": 7}
+        flow = OpenPicoOptionsFlow()
+        flow.async_show_form = MagicMock(return_value={"type": "form"})
+        await flow.async_step_init()
+        schema = flow.async_show_form.call_args.kwargs["data_schema"]
+        assert schema({}) == {"scan_interval": 30, "command_delay": 7}
+
+    async def test_local_entry_has_no_command_delay(self, entry):
+        flow = OpenPicoOptionsFlow()
+        flow.async_show_form = MagicMock(return_value={"type": "form"})
+        await flow.async_step_init()
+        assert "command_delay" not in flow.async_show_form.call_args.kwargs["data_schema"]({})
+
+
+CLOUD_DATA = {
+    "device_type": "polaris", "connection": "cloud", "email": "old@x.it", "password": "old",
+    "serial": "ABC", "pin": "1111", "name": "CU", "android_id": "a1", "scan_interval": 30,
+}
+LOCAL_DATA = {"device_type": "pico", "ip": "192.168.1.5", "pin": "1111", "name": "Living Room"}
+
+
+class TestReconfigure:
+    def _flow(self, data):
+        flow = _make_flow()
+        entry = MagicMock(data=data)
+        flow._get_reconfigure_entry = MagicMock(return_value=entry)
+        flow.async_update_reload_and_abort = MagicMock(return_value={"type": "abort"})
+        flow.async_show_form = MagicMock(return_value={"type": "form"})
+        return flow, entry
+
+    async def test_cloud_form_asks_account_and_pin(self):
+        flow, _ = self._flow(CLOUD_DATA)
+        await flow.async_step_reconfigure()
+        keys = {str(k) for k in flow.async_show_form.call_args.kwargs["data_schema"].schema}
+        assert keys == {"email", "password", "pin"}
+
+    async def test_local_form_asks_only_pin(self):
+        flow, _ = self._flow(LOCAL_DATA)
+        await flow.async_step_reconfigure()
+        keys = {str(k) for k in flow.async_show_form.call_args.kwargs["data_schema"].schema}
+        assert keys == {"pin"}
+
+    async def test_cloud_success_updates_entry(self):
+        flow, entry = self._flow(CLOUD_DATA)
+        with patch("custom_components.open_pico.config_flow._check_entry_data", AsyncMock(return_value=None)) as check:
+            await flow.async_step_reconfigure({"email": " new@x.it ", "password": "new", "pin": " 2222 "})
+        expected = {**CLOUD_DATA, "email": "new@x.it", "password": "new", "pin": "2222"}
+        check.assert_awaited_once_with(expected)
+        flow.async_update_reload_and_abort.assert_called_once_with(entry, data=expected)
+
+    async def test_wrong_pin_keeps_entry_and_shows_error(self):
+        flow, _ = self._flow(CLOUD_DATA)
+        with patch("custom_components.open_pico.config_flow._check_entry_data", AsyncMock(return_value="invalid_pin")):
+            await flow.async_step_reconfigure({"email": "old@x.it", "password": "old", "pin": "9999"})
+        flow.async_update_reload_and_abort.assert_not_called()
+        assert flow.async_show_form.call_args.kwargs["errors"] == {"base": "invalid_pin"}
+
+    @pytest.mark.parametrize(
+        ("data", "helper", "args"),
+        [
+            (LOCAL_DATA, "_check_pico_local", ("192.168.1.5", "1111", "pico_living_room_cfgflow")),
+            ({**LOCAL_DATA, "device_type": "polaris"}, "_check_polaris_local", ("192.168.1.5", "1111")),
+            (CLOUD_DATA, "_check_polaris_cloud", ("old@x.it", "old", "ABC", "1111", "CU", "a1")),
+            ({**CLOUD_DATA, "device_type": "pico"}, "_check_pico_cloud", ("old@x.it", "old", "ABC", "1111", "CU", "a1")),
+        ],
+    )
+    async def test_check_entry_data_dispatch(self, data, helper, args):
+        from custom_components.open_pico import config_flow
+
+        with patch.object(config_flow, helper, AsyncMock(return_value=None)) as check:
+            assert await config_flow._check_entry_data(data) is None
+        check.assert_awaited_once_with(*args)

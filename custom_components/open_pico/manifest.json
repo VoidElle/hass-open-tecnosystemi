@@ -10,7 +10,7 @@
   "issue_tracker": "https://github.com/VoidElle/hass-open-tecnosystemi/issues",
   "requirements": [
     "open-pico-local-api==2.7.0",
-    "open-polaris-local-api==2.0.0"
+    "open-polaris-local-api==2.0.1"
   ],
   "single_config_entry": false,
   "version": "4.3.0"

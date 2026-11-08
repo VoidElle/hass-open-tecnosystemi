@@ -13,14 +13,9 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from open_polaris_local_api import PolarisLocalClient, PolarisApiError, PolarisDevice, PolarisZone
 
-from .const import DOMAIN
+from .const import DOMAIN, POLARIS_SCAN_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
-
-# Local TCP polling (port 1235).
-# 30 seconds avoids overwhelming the CU's limited TCP stack,
-# which would block the official app's cloud sync.
-POLARIS_SCAN_INTERVAL = 30
 
 # Delay (seconds) after sending a command before polling.
 # The Polaris CU needs time to process commands; polling too
