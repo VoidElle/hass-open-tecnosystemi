@@ -11,9 +11,8 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.const import (
-    PERCENTAGE,
+    UnitOfRatio,
     UnitOfTemperature,
-    CONCENTRATION_PARTS_PER_MILLION,
 )
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -81,7 +80,7 @@ class PicoHumiditySensor(BaseEntity, SensorEntity):
     _attr_translation_key = "humidity"
     _attr_device_class = SensorDeviceClass.HUMIDITY
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_native_unit_of_measurement = UnitOfRatio.PERCENTAGE
     _attr_suggested_display_precision = 1
 
     def __init__(self, coordinator: MainCoordinator, device_index: int):
@@ -104,7 +103,7 @@ class PicoAirQualitySensor(BaseEntity, SensorEntity):
     _attr_translation_key = "air_quality"
     _attr_device_class = SensorDeviceClass.CO2
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_native_unit_of_measurement = CONCENTRATION_PARTS_PER_MILLION
+    _attr_native_unit_of_measurement = UnitOfRatio.PARTS_PER_MILLION
     _attr_suggested_display_precision = 0
 
     def __init__(self, coordinator: MainCoordinator, device_index: int):
@@ -127,7 +126,7 @@ class PicoTVOCSensor(BaseEntity, SensorEntity):
     _attr_translation_key = "tvoc"
     _attr_device_class = SensorDeviceClass.VOLATILE_ORGANIC_COMPOUNDS_PARTS
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_native_unit_of_measurement = CONCENTRATION_PARTS_PER_MILLION
+    _attr_native_unit_of_measurement = UnitOfRatio.PARTS_PER_MILLION
     _attr_suggested_display_precision = 0
 
     def __init__(self, coordinator: MainCoordinator, device_index: int):
@@ -176,7 +175,7 @@ class PicoECO2Sensor(BaseEntity, SensorEntity):
     _attr_translation_key = "eco2"
     _attr_device_class = SensorDeviceClass.CO2
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_native_unit_of_measurement = CONCENTRATION_PARTS_PER_MILLION
+    _attr_native_unit_of_measurement = UnitOfRatio.PARTS_PER_MILLION
     _attr_suggested_display_precision = 0
 
     def __init__(self, coordinator: MainCoordinator, device_index: int):
@@ -283,7 +282,7 @@ class PolarisZoneHumiditySensor(CoordinatorEntity, SensorEntity):
 
     _attr_device_class = SensorDeviceClass.HUMIDITY
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_native_unit_of_measurement = PERCENTAGE
+    _attr_native_unit_of_measurement = UnitOfRatio.PERCENTAGE
     _attr_suggested_display_precision = 0
     _attr_has_entity_name = True
 

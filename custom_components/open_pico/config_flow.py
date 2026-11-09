@@ -872,7 +872,7 @@ class OpenPicoConfigFlow(ConfigFlow, domain=DOMAIN):
             elif error := await _check_entry_data(data):
                 errors["base"] = error
             else:
-                return self.async_update_reload_and_abort(entry, data=data)
+                return self.async_update_and_abort(entry, data=data)
 
         schema: dict[Any, Any] = {}
         if not cloud:

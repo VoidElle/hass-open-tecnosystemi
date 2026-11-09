@@ -97,15 +97,15 @@ class TestStepPicoManual:
         with patch("open_pico_local_api.PicoClient") as MockPicoClient:
             mock_instance = MagicMock()
             mock_instance.connect = AsyncMock()
+            mock_instance.get_status = AsyncMock()
             mock_instance.disconnect = AsyncMock()
             MockPicoClient.return_value = mock_instance
 
-            with patch("asyncio.wait_for", return_value=None):
-                result = await flow.async_step_pico_manual({
-                    "ip": "192.168.1.50",
-                    "pin": "1234",
-                    "name": "Test Pico",
-                })
+            result = await flow.async_step_pico_manual({
+                "ip": "192.168.1.50",
+                "pin": "1234",
+                "name": "Test Pico",
+            })
 
         flow.async_create_entry.assert_called_once()
         call_kwargs = flow.async_create_entry.call_args[1]
@@ -121,12 +121,11 @@ class TestStepPicoManual:
             mock_instance.connect = AsyncMock(side_effect=OSError("refused"))
             MockPicoClient.return_value = mock_instance
 
-            with patch("asyncio.wait_for", side_effect=OSError("refused")):
-                result = await flow.async_step_pico_manual({
-                    "ip": "192.168.1.50",
-                    "pin": "1234",
-                    "name": "Test Pico",
-                })
+            result = await flow.async_step_pico_manual({
+                "ip": "192.168.1.50",
+                "pin": "1234",
+                "name": "Test Pico",
+            })
 
         flow.async_show_form.assert_called_once()
         call_kwargs = flow.async_show_form.call_args[1]
@@ -239,11 +238,11 @@ class TestStepPicoScanConfirm:
         with patch("open_pico_local_api.PicoClient") as MockPicoClient:
             mock_instance = MagicMock()
             mock_instance.connect = AsyncMock()
+            mock_instance.get_status = AsyncMock()
             mock_instance.disconnect = AsyncMock()
             MockPicoClient.return_value = mock_instance
 
-            with patch("asyncio.wait_for", return_value=None):
-                await flow.async_step_pico_scan_confirm({"name": "Living Room Pico"})
+            await flow.async_step_pico_scan_confirm({"name": "Living Room Pico"})
 
         flow.async_create_entry.assert_called_once()
         data = flow.async_create_entry.call_args[1]["data"]
@@ -275,13 +274,12 @@ class TestStepPolarisManual:
             mock_instance.close = AsyncMock()
             MockClient.return_value = mock_instance
 
-            with patch("asyncio.wait_for", return_value=None):
-                await flow.async_step_polaris_manual({
-                    "ip": "192.168.1.60",
-                    "pin": "5678",
-                    "name": "Test Polaris",
-                    "scan_interval": 30,
-                })
+            await flow.async_step_polaris_manual({
+                "ip": "192.168.1.60",
+                "pin": "5678",
+                "name": "Test Polaris",
+                "scan_interval": 30,
+            })
 
         flow.async_create_entry.assert_called_once()
         data = flow.async_create_entry.call_args[1]["data"]
@@ -291,14 +289,14 @@ class TestStepPolarisManual:
     async def test_connect_failure_shows_error(self):
         flow = _make_flow()
 
-        with patch("open_polaris_local_api.PolarisLocalClient"):
-            with patch("asyncio.wait_for", side_effect=OSError("refused")):
-                await flow.async_step_polaris_manual({
-                    "ip": "192.168.1.60",
-                    "pin": "5678",
-                    "name": "Test Polaris",
-                    "scan_interval": 30,
-                })
+        with patch("open_polaris_local_api.PolarisLocalClient") as MockClient:
+            MockClient.return_value.connect = AsyncMock(side_effect=OSError("refused"))
+            await flow.async_step_polaris_manual({
+                "ip": "192.168.1.60",
+                "pin": "5678",
+                "name": "Test Polaris",
+                "scan_interval": 30,
+            })
 
         call_kwargs = flow.async_show_form.call_args[1]
         assert call_kwargs["errors"]["base"] == "cannot_connect"
@@ -307,11 +305,11 @@ class TestStepPolarisManual:
         from open_polaris_local_api import PolarisApiError
 
         flow = _make_flow()
-        with patch("open_polaris_local_api.PolarisLocalClient"):
-            with patch("asyncio.wait_for", side_effect=PolarisApiError("stato error: res=0")):
-                await flow.async_step_polaris_manual({
-                    "ip": "192.168.1.60", "pin": "0000", "name": "Test Polaris",
-                })
+        with patch("open_polaris_local_api.PolarisLocalClient") as MockClient:
+            MockClient.return_value.connect = AsyncMock(side_effect=PolarisApiError("stato error: res=0"))
+            await flow.async_step_polaris_manual({
+                "ip": "192.168.1.60", "pin": "0000", "name": "Test Polaris",
+            })
 
         assert flow.async_show_form.call_args[1]["errors"]["base"] == "invalid_pin"
 
@@ -358,11 +356,10 @@ class TestStepPolarisScanConfirm:
             mock_instance.close = AsyncMock()
             MockClient.return_value = mock_instance
 
-            with patch("asyncio.wait_for", return_value=None):
-                await flow.async_step_polaris_scan_confirm({
-                    "name": "Upstairs Polaris",
-                    "scan_interval": 30,
-                })
+            await flow.async_step_polaris_scan_confirm({
+                "name": "Upstairs Polaris",
+                "scan_interval": 30,
+            })
 
         flow.async_create_entry.assert_called_once()
         data = flow.async_create_entry.call_args[1]["data"]
@@ -670,7 +667,7 @@ class TestReconfigure:
         flow = _make_flow()
         entry = MagicMock(data=data)
         flow._get_reconfigure_entry = MagicMock(return_value=entry)
-        flow.async_update_reload_and_abort = MagicMock(return_value={"type": "abort"})
+        flow.async_update_and_abort = MagicMock(return_value={"type": "abort"})
         flow.async_show_form = MagicMock(return_value={"type": "form"})
         return flow, entry
 
@@ -693,7 +690,7 @@ class TestReconfigure:
             await flow.async_step_reconfigure({"ip": " 192.168.1.9 ", "pin": "2222"})
         expected = {**LOCAL_DATA, "ip": "192.168.1.9", "pin": "2222"}
         check.assert_awaited_once_with(expected)
-        flow.async_update_reload_and_abort.assert_called_once_with(entry, data=expected)
+        flow.async_update_and_abort.assert_called_once_with(entry, data=expected)
 
     async def test_cloud_success_updates_entry(self):
         flow, entry = self._flow(CLOUD_DATA)
@@ -701,7 +698,7 @@ class TestReconfigure:
             await flow.async_step_reconfigure({"email": " new@x.it ", "password": "new", "pin": " 2222 "})
         expected = {**CLOUD_DATA, "email": "new@x.it", "password": "new", "pin": "2222"}
         check.assert_awaited_once_with(expected)
-        flow.async_update_reload_and_abort.assert_called_once_with(entry, data=expected)
+        flow.async_update_and_abort.assert_called_once_with(entry, data=expected)
 
     @pytest.mark.parametrize(
         ("other", "error"),
@@ -721,10 +718,10 @@ class TestReconfigure:
             await flow.async_step_reconfigure({"ip": "192.168.1.9", "pin": "1111"})
         if error:
             check.assert_not_awaited()  # no connection attempt
-            flow.async_update_reload_and_abort.assert_not_called()
+            flow.async_update_and_abort.assert_not_called()
             assert flow.async_show_form.call_args.kwargs["errors"] == {"base": error}
         else:
-            flow.async_update_reload_and_abort.assert_called_once()
+            flow.async_update_and_abort.assert_called_once()
 
     async def test_keeping_own_ip_is_allowed(self):
         flow, entry = self._flow(LOCAL_DATA)
@@ -732,13 +729,13 @@ class TestReconfigure:
         flow._async_current_entries = MagicMock(return_value=[entry])
         with patch("custom_components.open_pico.config_flow._check_entry_data", AsyncMock(return_value=None)):
             await flow.async_step_reconfigure({"ip": "192.168.1.5", "pin": "2222"})
-        flow.async_update_reload_and_abort.assert_called_once()
+        flow.async_update_and_abort.assert_called_once()
 
     async def test_wrong_pin_keeps_entry_and_shows_error(self):
         flow, _ = self._flow(CLOUD_DATA)
         with patch("custom_components.open_pico.config_flow._check_entry_data", AsyncMock(return_value="invalid_pin")):
             await flow.async_step_reconfigure({"email": "old@x.it", "password": "old", "pin": "9999"})
-        flow.async_update_reload_and_abort.assert_not_called()
+        flow.async_update_and_abort.assert_not_called()
         assert flow.async_show_form.call_args.kwargs["errors"] == {"base": "invalid_pin"}
 
     @pytest.mark.parametrize(

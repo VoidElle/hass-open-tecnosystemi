@@ -96,7 +96,7 @@ class PolarisMainClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
 
     _attr_has_entity_name = True
     _attr_name = None
-    _attr_temperature_unit = UnitOfTemperature.CELSIUS
+    _attr_native_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_supported_features = (
         ClimateEntityFeature.TURN_ON
         | ClimateEntityFeature.TURN_OFF
@@ -157,7 +157,7 @@ class PolarisMainClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
         return HVACAction.IDLE
 
     @property
-    def current_temperature(self) -> float | None:
+    def native_current_temperature(self) -> float | None:
         """Return canal temperature if available."""
         dev = self._device
         return float(dev.t_can) if dev and dev.t_can is not None else None
@@ -200,7 +200,7 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
     """
 
     _attr_has_entity_name = True
-    _attr_temperature_unit = UnitOfTemperature.CELSIUS
+    _attr_native_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_target_temperature_step = 0.5
     _attr_min_temp = 10.0
     _attr_max_temp = 30.0
@@ -272,12 +272,12 @@ class PolarisZoneClimate(CoordinatorEntity[PolarisCoordinator], ClimateEntity):
         }
 
     @property
-    def current_temperature(self) -> float | None:
+    def native_current_temperature(self) -> float | None:
         zone = self._zone
         return zone.current_temp if zone else None
 
     @property
-    def target_temperature(self) -> float | None:
+    def native_target_temperature(self) -> float | None:
         zone = self._zone
         return zone.set_temp if zone else None
 

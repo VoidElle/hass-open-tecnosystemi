@@ -107,11 +107,11 @@ class TestPolarisMainClimateHvacAction:
 class TestPolarisMainClimateCurrentTemp:
     def test_current_temperature(self, main_climate, polaris_coordinator):
         polaris_coordinator.data.device.t_can = 19.5
-        assert main_climate.current_temperature == 19.5
+        assert main_climate.native_current_temperature == 19.5
 
     def test_current_temperature_none(self, main_climate, polaris_coordinator):
         polaris_coordinator.data.device.t_can = None
-        assert main_climate.current_temperature is None
+        assert main_climate.native_current_temperature is None
 
 
 class TestPolarisMainClimateControl:
@@ -238,11 +238,11 @@ class TestPolarisZoneClimateState:
 
     def test_current_temperature(self, zone_climate, polaris_coordinator):
         polaris_coordinator.data.zones[0].current_temp = 21.0
-        assert zone_climate.current_temperature == 21.0
+        assert zone_climate.native_current_temperature == 21.0
 
     def test_target_temperature(self, zone_climate, polaris_coordinator):
         polaris_coordinator.data.zones[0].set_temp = 22.0
-        assert zone_climate.target_temperature == 22.0
+        assert zone_climate.native_target_temperature == 22.0
 
     def test_current_humidity(self, zone_climate, polaris_coordinator):
         polaris_coordinator.data.zones[0].humidity = 55.0
