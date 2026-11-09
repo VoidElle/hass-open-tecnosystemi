@@ -16,6 +16,7 @@
   <a href="https://github.com/VoidElle/hass-open-tecnosystemi/actions/workflows/tests.yml"><img src="https://img.shields.io/github/actions/workflow/status/VoidElle/hass-open-tecnosystemi/tests.yml?style=flat-square&label=tests" alt="tests"></a>
 </div>
 
+> **Disclaimer:** this is an unofficial, community-developed project. It is not affiliated with, endorsed by, or supported by Tecnosystemi S.p.A. All product names and trademarks are the property of their respective owners.
 
 Open Tecnosystemi is a Home Assistant integration that enables management of Tecnosystemi devices through Home Assistant.
 
