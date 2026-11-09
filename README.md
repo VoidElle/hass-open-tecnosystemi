@@ -9,7 +9,7 @@
   <a href="https://github.com/VoidElle/hass-open-tecnosystemi/releases"><img src="https://img.shields.io/github/v/release/VoidElle/hass-open-tecnosystemi?style=flat-square&label=version" alt="version"></a>
   <a href="https://github.com/VoidElle/hass-open-tecnosystemi/blob/master/LICENSE"><img src="https://img.shields.io/github/license/VoidElle/hass-open-tecnosystemi?style=flat-square" alt="license"></a>
   <br>
-  <a href="https://hacs.xyz"><img src="https://img.shields.io/badge/HACS-Default-41BDF5?style=flat-square&logo=home-assistant-community-store" alt="HACS"></a>
+  <a href="https://my.home-assistant.io/redirect/marketplace_repository/?owner=VoidElle&repository=hass-open-tecnosystemi&category=integration"><img src="https://img.shields.io/badge/Marketplace-available-41BDF5?style=flat-square&logo=home-assistant" alt="Marketplace"></a>
   <a href="https://www.home-assistant.io/"><img src="https://img.shields.io/badge/Home%20Assistant-%E2%89%A52026.11-41BDF5?style=flat-square&logo=home-assistant" alt="Home Assistant"></a>
   <a href="https://github.com/VoidElle/hass-open-tecnosystemi/stargazers"><img src="https://img.shields.io/github/stars/VoidElle/hass-open-tecnosystemi?style=flat-square" alt="stars"></a>
   <a href="https://github.com/VoidElle/hass-open-tecnosystemi/commits"><img src="https://img.shields.io/github/last-commit/VoidElle/hass-open-tecnosystemi?style=flat-square" alt="last commit"></a>
@@ -27,18 +27,17 @@ Open Tecnosystemi is a Home Assistant integration that enables management of Tec
 Both device families communicate **over your local network**. Both can also be set up through the Tecnosystemi cloud instead, for units Home Assistant cannot reach on the LAN.
 
 ## Installation 📦
-### Via HACS (Recommended) ⭐
-Open Tecnosystemi is available in the **HACS Default** repository - no custom repository needed.
+### Via the Marketplace (Recommended) ⭐
+Open Tecnosystemi is available in the Home Assistant **Marketplace**, built into Home Assistant 2026.11 and newer. No custom repository is needed.
 
-[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=VoidElle&repository=hass-open-tecnosystemi&category=integration)
+[![Open your Home Assistant instance and open a repository in the Marketplace.](https://my.home-assistant.io/badges/marketplace_repository.svg)](https://my.home-assistant.io/redirect/marketplace_repository/?owner=VoidElle&repository=hass-open-tecnosystemi&category=integration)
 
-1. Open HACS in your Home Assistant interface
-2. Go to "Integrations" tab
-3. Click **+ Explore & Download Repositories**
-4. Search for "Open Tecnosystemi"
-5. Click on the integration and then Download
-6. Select the latest version and click Download
-7. Restart Home Assistant 🔄
+1. Go to **Settings** > **Marketplace** (admin users only). On the first visit, accept the warning about community content.
+2. Search for "Open Tecnosystemi" and open it
+3. Select **Install**, check the version, then select **Install** again
+4. Restart Home Assistant if the Marketplace asks you to 🔄
+
+> **Home Assistant 2026.10 or older:** the Marketplace is not available, and version 5.0.0 and newer of this integration need Home Assistant 2026.11. Update Home Assistant, or install version 4.4.0 through HACS.
 
 ### Manual Installation 🔧
 1. Copy the `custom_components/open_pico/` folder from this repository into your Home Assistant `custom_components` directory (the folder must stay named `open_pico`)
@@ -46,7 +45,7 @@ Open Tecnosystemi is available in the **HACS Default** repository - no custom re
 
 ## Add the Integration to Home Assistant 🧩
 
-After installing (via HACS or manually) and restarting Home Assistant:
+After installing (via the Marketplace or manually) and restarting Home Assistant:
 
 1. Go to **Settings -> Devices & Services**
 2. Click **+ Add Integration**
@@ -135,7 +134,7 @@ Per-device setup and entity reference: [Pico](docs/pico.md) · [Polaris 5X](docs
 ## Troubleshooting 🔍
 
 ### Integration not found after installation
-Ensure you have fully restarted Home Assistant after installing the integration. A reload of HACS alone is not sufficient.
+Ensure you have fully restarted Home Assistant after installing the integration. Reloading the Marketplace alone is not sufficient.
 
 ### Device scan returns no results
 - Verify the subnet you entered matches the one your devices are on (e.g. `192.168.1.0/24`).
