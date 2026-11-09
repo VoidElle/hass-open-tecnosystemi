@@ -54,6 +54,36 @@ After installing (via the Marketplace or manually) and restarting Home Assistant
 5. Choose the device family: **Pico** or **Polaris**
 6. Choose the setup method: **Manual**, **Scan** or **Cloud**
 
+## Features ✨
+
+### Pico
+- 🌐 **Local UDP Communication**: Direct device control without cloud dependency
+- 📊 **Real-time Monitoring**: Temperature, humidity, CO2, TVOC sensors
+- 🎛️ **Full Control**: Operating modes, fan speed, night mode, LED control, target humidity
+- 🧹 **Filter Maintenance**: Maintenance alert binary sensor and reset button
+- ☁️ **Cloud Connection**: Optional, for units not reachable on the LAN
+
+#### Mode-dependent controls
+Like the official app, some Pico controls only work in certain operating modes:
+- **Fan speed** and **Night mode**: Heat Recovery, Extraction, Immission, Comfort Summer, Comfort Winter. In the other modes, and while night mode is on, the fan entity shows only on/off.
+- **Target humidity**: Humidity Recovery, Humidity Extraction, Humidity/CO2 Recovery, Humidity/CO2 Extraction. In the other modes the entity is unavailable.
+
+CO2, eCO2 and TVOC read 0 on models without the air quality sensor. They also read 0 on models with the sensor until a mode that turns it on is active. The backend reports both cases the same way, so these entities are always created. Disable them in Home Assistant if you don't need them.
+
+### Polaris 5X
+- 🌐 **Local TCP Communication**: Direct device control on port 1235, no cloud or internet required
+- 🌡️ **Climate Entities**: Per-zone temperature control
+- ❄️ **HVAC Modes**: Heating, Cooling (Raffrescamento, Deumidificazione, Ventilazione)
+- 💧 **Zone Sensors**: Temperature and humidity per zone
+- 📊 **Operating Mode**: Global CU operating mode sensor
+- 🌀 **Damper Control**: Per-zone damper (serranda) position via the zone climate swing mode
+- 🚨 **Error Sensors**: CU and per-zone error binary sensors
+- ☁️ **Cloud Connection**: Optional, for CUs not reachable on the LAN
+
+### General
+- 🔄 **Multi-Device Support**: Control multiple devices of both types simultaneously
+- 🏷️ **Device Organization**: Entities are grouped per device for easy management
+
 ## Configuration ⚙️
 
 All configuration is done through the Home Assistant UI - no `configuration.yaml` editing required.
@@ -93,36 +123,6 @@ The Tecnosystemi backend allows only one session per account at a time. While th
 | Name | not changeable: remove the entry and add it again | all |
 
 Default polling intervals: local Pico 5 seconds, local Polaris 60 seconds, cloud 30 seconds. **Configure** reloads the entry to apply the change. **Reconfigure** tests the new values against the device and keeps the old ones if the test fails.
-
-## Features ✨
-
-### Pico
-- 🌐 **Local UDP Communication**: Direct device control without cloud dependency
-- 📊 **Real-time Monitoring**: Temperature, humidity, CO2, TVOC sensors
-- 🎛️ **Full Control**: Operating modes, fan speed, night mode, LED control, target humidity
-- 🧹 **Filter Maintenance**: Maintenance alert binary sensor and reset button
-- ☁️ **Cloud Connection**: Optional, for units not reachable on the LAN
-
-#### Mode-dependent controls
-Like the official app, some Pico controls only work in certain operating modes:
-- **Fan speed** and **Night mode**: Heat Recovery, Extraction, Immission, Comfort Summer, Comfort Winter. In the other modes, and while night mode is on, the fan entity shows only on/off.
-- **Target humidity**: Humidity Recovery, Humidity Extraction, Humidity/CO2 Recovery, Humidity/CO2 Extraction. In the other modes the entity is unavailable.
-
-CO2, eCO2 and TVOC read 0 on models without the air quality sensor. They also read 0 on models with the sensor until a mode that turns it on is active. The backend reports both cases the same way, so these entities are always created. Disable them in Home Assistant if you don't need them.
-
-### Polaris 5X
-- 🌐 **Local TCP Communication**: Direct device control on port 1235, no cloud or internet required
-- 🌡️ **Climate Entities**: Per-zone temperature control
-- ❄️ **HVAC Modes**: Heating, Cooling (Raffrescamento, Deumidificazione, Ventilazione)
-- 💧 **Zone Sensors**: Temperature and humidity per zone
-- 📊 **Operating Mode**: Global CU operating mode sensor
-- 🌀 **Damper Control**: Per-zone damper (serranda) position via the zone climate swing mode
-- 🚨 **Error Sensors**: CU and per-zone error binary sensors
-- ☁️ **Cloud Connection**: Optional, for CUs not reachable on the LAN
-
-### General
-- 🔄 **Multi-Device Support**: Control multiple devices of both types simultaneously
-- 🏷️ **Device Organization**: Entities are grouped per device for easy management
 
 ## Limitations ⚠️
 - Pico and Polaris need local network access unless set up with the cloud connection, which depends on the Tecnosystemi backend
